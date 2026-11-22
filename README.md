@@ -5,47 +5,96 @@ Google Sheet Sync Setup
 
 
 function doPost(e) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  var data = JSON.parse(e.postData.contents);
+  var lock = LockService.getScriptLock();
+  lock.tryLock(10000); // Prevents simultaneous edits from different devices
   
-  if (data.action === 'sync') {
-    sheet.clear();
-    sheet.appendRow(['ID', 'Date', 'Type', 'Title', 'Category', 'Payment Method', 'Note', 'Amount', 'Email']);
-    
-    if (data.transactions && data.transactions.length > 0) {
-      var rows = data.transactions.map(function(t) {
-        return [t.id, t.date, t.type, t.title, t.category, t.paymentMethod, t.note, t.amount, data.email];
-      });
-      sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var data = JSON.parse(e.postData.contents);
+    var email = data.email;
+    var txs = data.transactions || [];
+
+    // If sheet is empty, add headers
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(['ID', 'Date', 'Type', 'Title', 'Category', 'Payment Method', 'Note', 'Amount', 'Email']);
     }
+
+    var allData = sheet.getDataRange().getValues();
+    var idToRow = {};
+    
+    // Map existing rows for this specific user
+    for (var i = 1; i < allData.length; i++) {
+      if (allData[i][8] === email) {
+        idToRow[allData[i][0]] = i + 1;
+      }
+    }
+
+    var rowsToDelete = [];
+
+    // Process incoming transactions
+    txs.forEach(function(t) {
+      var row = idToRow[t.id];
+      var rowData = [t.id, t.date, t.type, t.title, t.category, t.paymentMethod, t.note || '', t.amount, email];
+
+      if (t.deleted) {
+        if (row) rowsToDelete.push(row); // Mark for deletion
+      } else {
+        if (row) {
+          sheet.getRange(row, 1, 1, 9).setValues([rowData]); // Update existing
+          delete idToRow[t.id]; 
+        } else {
+          sheet.appendRow(rowData); // Add new
+        }
+      }
+    });
+
+    // Delete rows from bottom to top so row numbers don't shift
+    rowsToDelete.sort(function(a, b) { return b - a; });
+    rowsToDelete.forEach(function(row) { sheet.deleteRow(row); });
+
     return ContentService.createTextOutput(JSON.stringify({"status": "success"})).setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({"status": "error", "message": error.toString()})).setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
   }
 }
 
 function doGet(e) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   var email = e.parameter.email;
-  var data = sheet.getDataRange().getValues();
-  
-  if (data.length <= 1) {
+
+  if (!email) {
     return ContentService.createTextOutput(JSON.stringify({"transactions": []})).setMimeType(ContentService.MimeType.JSON);
   }
-  
-  var headers = data[0];
+
+  var allData = sheet.getDataRange().getValues();
+  if (allData.length <= 1) {
+    return ContentService.createTextOutput(JSON.stringify({"transactions": []})).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  var headers = allData[0];
   var emailIdx = headers.indexOf('Email');
   var txs = [];
-  
-  for (var i = 1; i < data.length; i++) {
-    if (data[i][emailIdx] === email) {
+
+  for (var i = 1; i < allData.length; i++) {
+    if (allData[i][emailIdx] === email) {
       txs.push({
-        id: data[i][0], date: data[i][1], type: data[i][2],
-        title: data[i][3], category: data[i][4], paymentMethod: data[i][5],
-        note: data[i][6], amount: parseFloat(data[i][7])
+        id: allData[i][0],
+        date: allData[i][1],
+        type: allData[i][2],
+        title: allData[i][3],
+        category: allData[i][4],
+        paymentMethod: allData[i][5],
+        note: allData[i][6],
+        amount: parseFloat(allData[i][7])
       });
     }
   }
+
   return ContentService.createTextOutput(JSON.stringify({"transactions": txs})).setMimeType(ContentService.MimeType.JSON);
 }
+
 
 
 3. Click Deploy > New Deployment. Select type: Web App.
