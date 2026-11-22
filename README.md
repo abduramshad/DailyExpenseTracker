@@ -6,7 +6,7 @@ Google Sheet Sync Setup
 
 function doPost(e) {
   var lock = LockService.getScriptLock();
-  lock.tryLock(10000); // Prevents simultaneous edits from different devices
+  lock.tryLock(10000); // Prevents simultaneous edits
   
   try {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
@@ -14,9 +14,9 @@ function doPost(e) {
     var email = data.email;
     var txs = data.transactions || [];
 
-    // If sheet is empty, add headers
+    // Add headers if sheet is empty
     if (sheet.getLastRow() === 0) {
-      sheet.appendRow(['ID', 'Date', 'Type', 'Title', 'Category', 'Payment Method', 'Note', 'Amount', 'Email']);
+      sheet.appendRow(['ID', 'Date', 'Type', 'Title', 'Category', 'Payment Method', 'Note', 'Amount', 'Location', 'Email']);
     }
 
     var allData = sheet.getDataRange().getValues();
@@ -24,7 +24,7 @@ function doPost(e) {
     
     // Map existing rows for this specific user
     for (var i = 1; i < allData.length; i++) {
-      if (allData[i][8] === email) {
+      if (allData[i][9] === email) { // Email is now at index 9
         idToRow[allData[i][0]] = i + 1;
       }
     }
@@ -34,21 +34,24 @@ function doPost(e) {
     // Process incoming transactions
     txs.forEach(function(t) {
       var row = idToRow[t.id];
-      var rowData = [t.id, t.date, t.type, t.title, t.category, t.paymentMethod, t.note || '', t.amount, email];
+      // Force date to be a clean string (YYYY-MM-DD) to prevent timezone shifts
+      var cleanDate = t.date.split('T')[0]; 
+      
+      var rowData = [t.id, cleanDate, t.type, t.title, t.category, t.paymentMethod, t.note || '', t.amount, t.location || '', email];
 
       if (t.deleted) {
-        if (row) rowsToDelete.push(row); // Mark for deletion
+        if (row) rowsToDelete.push(row);
       } else {
         if (row) {
-          sheet.getRange(row, 1, 1, 9).setValues([rowData]); // Update existing
+          sheet.getRange(row, 1, 1, 10).setValues([rowData]); // Update
           delete idToRow[t.id]; 
         } else {
-          sheet.appendRow(rowData); // Add new
+          sheet.appendRow(rowData); // Insert
         }
       }
     });
 
-    // Delete rows from bottom to top so row numbers don't shift
+    // Delete rows from bottom to top
     rowsToDelete.sort(function(a, b) { return b - a; });
     rowsToDelete.forEach(function(row) { sheet.deleteRow(row); });
 
@@ -64,14 +67,10 @@ function doGet(e) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   var email = e.parameter.email;
 
-  if (!email) {
-    return ContentService.createTextOutput(JSON.stringify({"transactions": []})).setMimeType(ContentService.MimeType.JSON);
-  }
+  if (!email) return ContentService.createTextOutput(JSON.stringify({"transactions": []})).setMimeType(ContentService.MimeType.JSON);
 
   var allData = sheet.getDataRange().getValues();
-  if (allData.length <= 1) {
-    return ContentService.createTextOutput(JSON.stringify({"transactions": []})).setMimeType(ContentService.MimeType.JSON);
-  }
+  if (allData.length <= 1) return ContentService.createTextOutput(JSON.stringify({"transactions": []})).setMimeType(ContentService.MimeType.JSON);
 
   var headers = allData[0];
   var emailIdx = headers.indexOf('Email');
@@ -79,22 +78,26 @@ function doGet(e) {
 
   for (var i = 1; i < allData.length; i++) {
     if (allData[i][emailIdx] === email) {
+      // Force date output to string format
+      var rawDate = allData[i][1];
+      var cleanDate = rawDate instanceof Date ? Utilities.formatDate(rawDate, Session.getScriptTimeZone(), "yyyy-MM-dd") : rawDate.split('T')[0];
+      
       txs.push({
         id: allData[i][0],
-        date: allData[i][1],
+        date: cleanDate,
         type: allData[i][2],
         title: allData[i][3],
         category: allData[i][4],
         paymentMethod: allData[i][5],
         note: allData[i][6],
-        amount: parseFloat(allData[i][7])
+        amount: parseFloat(allData[i][7]),
+        location: allData[i][8] || ''
       });
     }
   }
 
   return ContentService.createTextOutput(JSON.stringify({"transactions": txs})).setMimeType(ContentService.MimeType.JSON);
 }
-
 
 
 3. Click Deploy > New Deployment. Select type: Web App.
