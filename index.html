@@ -8,33 +8,28 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-<!-- PWA Manifest -->
 <link rel="manifest" href="manifest.json">
-
-<!-- Favicon & Logo -->
 <link rel="icon" type="image/png" href="img/DailyExpenseTrackerLogo.png">
 <link rel="apple-touch-icon" href="img/DailyExpenseTrackerLogo.png">
 
-<!-- Icons -->
 <script src="https://unpkg.com/@phosphor-icons/web"></script>
-
-<!-- Export Libraries -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
 
 <style>
-/* [Previous CSS remains completely unchanged, keeping it hidden to save space] */
 /* ============ THEME TOKENS ============ */
 :root{
   --bg:#f2f4fa; --surface:#ffffff; --surface-2:#f6f8fd; --text:#0f172a; --muted:#64748b; --border:#e6e9f3;
   --accent:#6366f1; --accent-2:#8b5cf6; --accent-soft:rgba(99,102,241,.10);
   --income:#10b981; --expense:#f43f5e; --wallet:#f59e0b; --bank:#3b82f6; --credit:#ec4899;
   --shadow:0 4px 24px rgba(15,23,42,.06); --shadow-lg:0 18px 50px rgba(15,23,42,.16); --radius:20px;
+  color-scheme: light;
 }
 [data-theme="dark"]{
   --bg:#080c17; --surface:#131a2b; --surface-2:#1a2234; --text:#e8ecf7; --muted:#93a0b8; --border:#232c43;
   --accent-soft:rgba(99,102,241,.16); --shadow:0 4px 24px rgba(0,0,0,.35); --shadow-lg:0 18px 50px rgba(0,0,0,.6);
+  color-scheme: dark;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
@@ -140,8 +135,6 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
 .tx-sub{font-size:11.5px;color:var(--muted);font-weight:500;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tx-amt{font-size:14px;font-weight:800;letter-spacing:-.3px;white-space:nowrap}
 .tx-amt.income{color:var(--income)} .tx-amt.expense{color:var(--expense)}
-.tx-del{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:var(--muted);opacity:0;transition:.16s;flex:none;}
-.tx:hover .tx-del{opacity:1} .tx-del:hover{background:rgba(244,63,94,.12);color:var(--expense)} .tx-del svg{width:15px;height:15px}
 
 .toolbar{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
 .chips{display:flex;gap:7px;background:var(--surface);border:1px solid var(--border);padding:5px;border-radius:14px}
@@ -151,9 +144,18 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
 .search svg{width:17px;height:17px;color:var(--muted);flex:none}
 .search input{flex:1;border:none;outline:none;background:transparent;font-size:13.5px;font-weight:500;min-width:0}
 .search input::placeholder{color:var(--muted)}
-.date-filter { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 0 14px; height: 46px; }
+
+.filter-group { display: flex; gap: 8px; flex-wrap: wrap; }
+.date-filter, .pay-filter { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 0 14px; height: 46px; color: var(--text); }
 .date-filter input { border: none; outline: none; background: transparent; font-size: 12px; font-weight: 600; color: var(--text); }
+.pay-filter select { border: none; outline: none; background: transparent; font-size: 12px; font-weight: 600; color: var(--text); cursor: pointer; }
 .date-filter span { color: var(--muted); font-size: 12px; font-weight: 600; }
+
+.history-summary { background: var(--surface-2); padding: 16px; border-radius: 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border); }
+.history-summary h4 { font-size: 14px; font-weight: 700; color: var(--muted); }
+.history-summary .sum-amt { font-size: 20px; font-weight: 800; }
+.history-summary .sum-amt.pos { color: var(--income); }
+.history-summary .sum-amt.neg { color: var(--expense); }
 
 .day-group{margin-bottom:18px}
 .day-head{display:flex;align-items:center;justify-content:space-between;padding:0 6px 8px}
@@ -174,7 +176,7 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
 .setting-text{flex:1;min-width:0}
 .setting-text strong{display:block;font-size:13.5px;font-weight:700}
 .setting-text span{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
-.setting-row select, .setting-row input[type="text"], .setting-row input[type="number"]{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:9px 12px;font-size:13px;font-weight:700;outline:none;}
+.setting-row select, .setting-row input[type="text"], .setting-row input[type="number"]{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:9px 12px;font-size:13px;font-weight:700;outline:none; color: var(--text);}
 .switch{width:48px;height:27px;border-radius:20px;background:var(--border);position:relative;transition:.22s;flex:none;}
 .switch::after{content:"";position:absolute;width:21px;height:21px;border-radius:50%;background:#fff;top:3px;left:3px;transition:.22s;box-shadow:0 2px 6px rgba(0,0,0,.2);}
 .switch.on{background:linear-gradient(135deg,var(--accent),var(--accent-2))} .switch.on::after{left:24px}
@@ -218,8 +220,12 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
 .cat-name{font-size:9.5px;font-weight:700;color:var(--muted);text-align:center;line-height:1.2} .cat-item.selected .cat-name{color:var(--accent)}
 
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px} .row2 .field{margin-bottom:18px}
-.field input[type=date],.field input[type=text], .field select{width:100%;background:var(--surface-2);border:2px solid var(--border);border-radius:13px;padding:12px 14px;font-size:13.5px;font-weight:600;outline:none;transition:.18s;appearance: none;-webkit-appearance: none;}
+.field input[type=date],.field input[type=text], .field select{width:100%;background:var(--surface-2);border:2px solid var(--border);border-radius:13px;padding:12px 14px;font-size:13.5px;font-weight:600;outline:none;transition:.18s;appearance: none;-webkit-appearance: none; color: var(--text);}
 .field input[type=date]:focus,.field input[type=text]:focus, .field select:focus{border-color:var(--accent);background:var(--surface)}
+
+.location-input { display: flex; gap: 8px; }
+.location-input input { flex: 1; }
+.location-input button { width: 46px; height: 46px; border-radius: 13px; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 20px; flex: none; }
 
 .pay-methods{display:flex; flex-wrap:wrap; gap:8px;}
 .pay-item{padding:8px 12px; border-radius:10px; border:1px solid var(--border); background:var(--surface-2);font-size:12px; font-weight:600; color:var(--muted); display:flex; align-items:center; gap:6px;}
@@ -249,7 +255,7 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
 .custom-amt { display: flex; align-items: center; background: var(--surface-2); border: 2px solid var(--border); border-radius: 12px; padding: 0 16px; height: 50px; margin-bottom: 24px; transition: 0.2s; }
 .custom-amt:focus-within { border-color: var(--accent); background: var(--surface); }
 .custom-amt span { font-size: 18px; font-weight: 700; color: var(--muted); margin-right: 8px; }
-.custom-amt input { flex: 1; border: none; outline: none; background: transparent; font-size: 16px; font-weight: 600; }
+.custom-amt input { flex: 1; border: none; outline: none; background: transparent; font-size: 16px; font-weight: 600; color: var(--text); }
 .upi-section { text-align: center; border-top: 1px dashed var(--border); padding-top: 20px; }
 .upi-section h4 { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
 .upi-section p { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
@@ -274,7 +280,7 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
 .login-box img { width: 80px; height: 80px; border-radius: 20px; margin-bottom: 20px; object-fit: cover;}
 .login-box h2 { font-size: 24px; font-weight: 800; margin-bottom: 8px; }
 .login-box p { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
-.login-box input {width: 100%; padding: 14px 16px; border-radius: 12px; border: 2px solid var(--border);background: var(--surface-2); font-size: 15px; margin-bottom: 16px; outline: none; transition: 0.2s;}
+.login-box input {width: 100%; padding: 14px 16px; border-radius: 12px; border: 2px solid var(--border);background: var(--surface-2); font-size: 15px; margin-bottom: 16px; outline: none; transition: 0.2s; color: var(--text);}
 .login-box input:focus { border-color: var(--accent); }
 .login-box button { width: 100%; padding: 14px; font-size: 15px; border-radius: 12px; }
 
@@ -295,10 +301,9 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
   .page-title{font-size:22px}
   .donut-wrap{flex-direction:column;align-items:stretch;gap:16px}
   .donut-box{width:150px;margin:0 auto}
-  .tx-del{opacity:1}
   .balance-card h2{font-size:28px}
   .toolbar { flex-direction: column; align-items: stretch; }
-  .date-filter { justify-content: space-between; }
+  .date-filter, .pay-filter { justify-content: space-between; }
   .bc-bottom strong { font-size: 22px; }
 }
 @media (max-width:420px){
@@ -471,23 +476,45 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
           <h1 class="page-title">History</h1>
           <p class="page-sub">Every income and expense, all in one place.</p>
         </div>
+        
         <div class="toolbar">
           <div class="chips" id="filterChips">
             <button class="chip active" data-filter="all">All</button>
             <button class="chip" data-filter="expense">Expenses</button>
             <button class="chip" data-filter="income">Income</button>
           </div>
-          <div class="date-filter">
-            <input type="date" id="startDateFilter" title="Start Date">
-            <span>to</span>
-            <input type="date" id="endDateFilter" title="End Date">
-            <button class="ghost-btn" onclick="clearDateFilter()" style="padding:4px 8px; font-size:10px;">Clear</button>
-          </div>
+          
           <div class="search">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-            <input id="searchInput" type="text" placeholder="Search notes or categories…">
+            <input id="searchInput" type="text" placeholder="Search title, category, note...">
+          </div>
+
+          <div class="filter-group">
+            <div class="pay-filter">
+              <i class="ph ph-credit-card" style="color:var(--muted);"></i>
+              <select id="paymentFilter">
+                <option value="all">All Payments</option>
+                <option value="Cash">Cash</option>
+                <option value="UPI">UPI</option>
+                <option value="Credit Card">Credit Card</option>
+                <option value="Debit Card">Debit Card</option>
+                <option value="Bank Transfer">Bank Transfer</option>
+              </select>
+            </div>
+            <div class="date-filter">
+              <input type="date" id="startDateFilter" title="Start Date">
+              <span>to</span>
+              <input type="date" id="endDateFilter" title="End Date">
+              <button class="ghost-btn" onclick="clearDateFilter()" style="padding:4px 8px; font-size:10px;">Clear</button>
+            </div>
           </div>
         </div>
+
+        <div class="history-summary" id="historySummary" style="display:none;">
+          <h4>Filtered Total</h4>
+          <div class="sum-amt" id="historyTotal">₹0.00</div>
+        </div>
+
         <div id="historyList"></div>
       </section>
 
@@ -634,7 +661,7 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
     </label>
     <label class="field">
       <span id="titleLabel">Expense Title</span>
-      <input type="text" id="titleInput" placeholder="e.g. Lunch with team">
+      <input type="text" id="titleInput" placeholder="Lunch with team">
     </label>
     <div class="field">
       <span>Category</span>
@@ -650,6 +677,15 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
         <button type="button" class="pay-item" data-pay="Bank Transfer"><i class="ph ph-bank"></i> Bank Transfer</button>
       </div>
     </div>
+
+    <div class="field">
+      <span>Location (Optional)</span>
+      <div class="location-input">
+        <input type="text" id="locationInput" placeholder="Shop name, place...">
+        <button type="button" id="getLocationBtn" title="Get Current Location"><i class="ph ph-map-pin"></i></button>
+      </div>
+    </div>
+
     <div class="row2">
       <label class="field">
         <span>Date</span>
@@ -715,99 +751,47 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
     <div class="readme-step"><div class="readme-num">2</div><div class="readme-text">Delete any existing code, paste the script below, and click <b>Save</b>.</div></div>
     <div class="code-block">
       <button class="copy-btn" onclick="copyScript()">Copy</button>
-      <pre id="appsScriptCode">
-        
-        function doPost(e) {
+      <pre id="appsScriptCode">function doPost(e) {
   var lock = LockService.getScriptLock();
-  lock.tryLock(10000); // Prevents simultaneous edits from different devices
-  
+  lock.tryLock(10000);
   try {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
     var data = JSON.parse(e.postData.contents);
     var email = data.email;
     var txs = data.transactions || [];
-
-    // If sheet is empty, add headers
-    if (sheet.getLastRow() === 0) {
-      sheet.appendRow(['ID', 'Date', 'Type', 'Title', 'Category', 'Payment Method', 'Note', 'Amount', 'Email']);
-    }
-
+    if (sheet.getLastRow() === 0) sheet.appendRow(['ID', 'Date', 'Type', 'Title', 'Category', 'Payment Method', 'Note', 'Amount', 'Location', 'Email']);
     var allData = sheet.getDataRange().getValues();
     var idToRow = {};
-    
-    // Map existing rows for this specific user
-    for (var i = 1; i < allData.length; i++) {
-      if (allData[i][8] === email) {
-        idToRow[allData[i][0]] = i + 1;
-      }
-    }
-
+    for (var i = 1; i < allData.length; i++) { if (allData[i][9] === email) idToRow[allData[i][0]] = i + 1; }
     var rowsToDelete = [];
-
-    // Process incoming transactions
     txs.forEach(function(t) {
       var row = idToRow[t.id];
-      var rowData = [t.id, t.date, t.type, t.title, t.category, t.paymentMethod, t.note || '', t.amount, email];
-
-      if (t.deleted) {
-        if (row) rowsToDelete.push(row); // Mark for deletion
-      } else {
-        if (row) {
-          sheet.getRange(row, 1, 1, 9).setValues([rowData]); // Update existing
-          delete idToRow[t.id]; 
-        } else {
-          sheet.appendRow(rowData); // Add new
-        }
-      }
+      var cleanDate = t.date.split('T')[0]; 
+      var rowData = [t.id, cleanDate, t.type, t.title, t.category, t.paymentMethod, t.note || '', t.amount, t.location || '', email];
+      if (t.deleted) { if (row) rowsToDelete.push(row); } 
+      else { if (row) { sheet.getRange(row, 1, 1, 10).setValues([rowData]); delete idToRow[t.id]; } else { sheet.appendRow(rowData); } }
     });
-
-    // Delete rows from bottom to top so row numbers don't shift
     rowsToDelete.sort(function(a, b) { return b - a; });
     rowsToDelete.forEach(function(row) { sheet.deleteRow(row); });
-
     return ContentService.createTextOutput(JSON.stringify({"status": "success"})).setMimeType(ContentService.MimeType.JSON);
-  } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({"status": "error", "message": error.toString()})).setMimeType(ContentService.MimeType.JSON);
-  } finally {
-    lock.releaseLock();
-  }
+  } catch (error) { return ContentService.createTextOutput(JSON.stringify({"status": "error", "message": error.toString()})).setMimeType(ContentService.MimeType.JSON); } finally { lock.releaseLock(); }
 }
-
 function doGet(e) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   var email = e.parameter.email;
-
-  if (!email) {
-    return ContentService.createTextOutput(JSON.stringify({"transactions": []})).setMimeType(ContentService.MimeType.JSON);
-  }
-
+  if (!email) return ContentService.createTextOutput(JSON.stringify({"transactions": []})).setMimeType(ContentService.MimeType.JSON);
   var allData = sheet.getDataRange().getValues();
-  if (allData.length <= 1) {
-    return ContentService.createTextOutput(JSON.stringify({"transactions": []})).setMimeType(ContentService.MimeType.JSON);
-  }
-
-  var headers = allData[0];
-  var emailIdx = headers.indexOf('Email');
-  var txs = [];
-
+  if (allData.length <= 1) return ContentService.createTextOutput(JSON.stringify({"transactions": []})).setMimeType(ContentService.MimeType.JSON);
+  var headers = allData[0]; var emailIdx = headers.indexOf('Email'); var txs = [];
   for (var i = 1; i < allData.length; i++) {
     if (allData[i][emailIdx] === email) {
-      txs.push({
-        id: allData[i][0],
-        date: allData[i][1],
-        type: allData[i][2],
-        title: allData[i][3],
-        category: allData[i][4],
-        paymentMethod: allData[i][5],
-        note: allData[i][6],
-        amount: parseFloat(allData[i][7])
-      });
+      var rawDate = allData[i][1];
+      var cleanDate = rawDate instanceof Date ? Utilities.formatDate(rawDate, Session.getScriptTimeZone(), "yyyy-MM-dd") : rawDate.split('T')[0];
+      txs.push({ id: allData[i][0], date: cleanDate, type: allData[i][2], title: allData[i][3], category: allData[i][4], paymentMethod: allData[i][5], note: allData[i][6], amount: parseFloat(allData[i][7]), location: allData[i][8] || '' });
     }
   }
-
   return ContentService.createTextOutput(JSON.stringify({"transactions": txs})).setMimeType(ContentService.MimeType.JSON);
-}
-  </pre>
+}</pre>
     </div>
     <div class="readme-step" style="margin-top:16px;"><div class="readme-num">3</div><div class="readme-text">Click <b>Deploy > New Deployment</b>. Select type: <b>Web App</b>.</div></div>
     <div class="readme-step"><div class="readme-num">4</div><div class="readme-text">Set "Execute as" to <b>Me</b> and "Who has access" to <b>Anyone</b>. Click Deploy.</div></div>
@@ -904,7 +888,7 @@ function handleLogin() {
   loadState(email);
   $('#loginOverlay').classList.add('hidden');
   render();
-  syncData(); // Auto-sync on login
+  syncData();
 }
 function handleLogout() { localStorage.removeItem('det_current_user'); location.reload(); }
 function loadState(email) {
@@ -920,21 +904,17 @@ async function syncData() {
   if (!state.googleSheetUrl) return;
   
   try {
-    // 1. Push local data to sheet first (makes sure offline entries are saved)
     await fetch(state.googleSheetUrl, {
       method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'sync', email: state.email, transactions: state.transactions })
     });
     
-    // 2. Wait briefly for Google Scripts to process the POST
     await new Promise(r => setTimeout(r, 1500));
     
-    // 3. Fetch the latest data from the sheet
     const res = await fetch(`${state.googleSheetUrl}?email=${encodeURIComponent(state.email)}`);
     const data = await res.json();
     
     if (data && data.transactions) {
-      // Overwrite local state with the sheet's state (Sheet is the source of truth)
       state.transactions = data.transactions;
       persist();
       render();
@@ -942,6 +922,9 @@ async function syncData() {
     }
   } catch(e) { console.log('Sync failed', e); showToast('Sync failed. Check connection.'); }
 }
+
+// Auto-sync every 1 hour
+setInterval(syncData, 60 * 60 * 1000);
 
 /* =====================================================================
    BALANCE CALCULATIONS
@@ -991,11 +974,23 @@ function fmtCompact(n) {
   return fmt(v);
 }
 function initials(name) { return name ? name.trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() : 'U'; }
+
 function dayLabel(dateStr) {
-  const today = iso(new Date()); const y = new Date(); y.setDate(y.getDate() - 1);
-  if (dateStr === today) return 'Today';
-  if (dateStr === iso(y)) return 'Yesterday';
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+  if (!dateStr) return 'Unknown Date';
+  const cleanDate = dateStr.split('T')[0];
+  const d = new Date(cleanDate + 'T00:00:00');
+  
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+  const y = new Date(today); y.setDate(y.getDate() - 1);
+  const yStr = `${y.getFullYear()}-${pad(y.getMonth() + 1)}-${pad(y.getDate())}`;
+  
+  if (cleanDate === todayStr) return 'Today';
+  if (cleanDate === yStr) return 'Yesterday';
+  
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${days[d.getDay()]}, ${pad(d.getDate())}-${months[d.getMonth()]}-${d.getFullYear()}`;
 }
 
 function renderDonut(el, segments, total, type) {
@@ -1061,7 +1056,7 @@ function renderDynamicBarChart(el) {
 /* =====================================================================
    MARKUP & RENDERERS
    ===================================================================== */
-function txMarkup(t, showDelete = true) {
+function txMarkup(t) {
   const cat = findCat(t.type, t.category), sign = t.type === 'income' ? '+' : '−';
   return `
     <li class="tx" onclick="openViewModal('${t.id}')">
@@ -1071,9 +1066,6 @@ function txMarkup(t, showDelete = true) {
         <div class="tx-sub">${cat.name} · ${t.paymentMethod || 'Cash'} · ${dayLabel(t.date)}</div>
       </div>
       <div class="tx-amt ${t.type}">${sign}${fmt(t.amount)}</div>
-      ${showDelete ? `<button class="tx-del" onclick="event.stopPropagation(); openConfirmModal('Delete this transaction?', () => deleteTx('${t.id}'))" aria-label="Delete">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg>
-      </button>` : ''}
     </li>`;
 }
 function escapeHtml(s) { return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -1110,23 +1102,63 @@ function renderDashboard() {
   $('#recentList').innerHTML = recent.length ? recent.map(t => txMarkup(t, false)).join('') : `<li class="empty-state"><div class="es-emoji">🧾</div><h4>No transactions yet</h4><p>Tap “Add” to record your first income or expense.</p></li>`;
 }
 function sortedTx() { return [...state.transactions].filter(t => !t.deleted).sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0)); }
+
 function renderHistory() {
-  const filter = $('#filterChips .chip.active')?.dataset.filter || 'all', q = ($('#searchInput').value || '').toLowerCase().trim();
-  const startDate = $('#startDateFilter').value, endDate = $('#endDateFilter').value;
+  const filter = $('#filterChips .chip.active')?.dataset.filter || 'all';
+  const q = ($('#searchInput').value || '').toLowerCase().trim();
+  const startDate = $('#startDateFilter').value;
+  const endDate = $('#endDateFilter').value;
+  const payFilter = $('#paymentFilter').value;
+  
   let txs = sortedTx();
+  
+  // Apply Filters
   if (filter !== 'all') txs = txs.filter(t => t.type === filter);
+  if (payFilter !== 'all') txs = txs.filter(t => t.paymentMethod === payFilter);
   if (startDate) txs = txs.filter(t => t.date >= startDate);
   if (endDate) txs = txs.filter(t => t.date <= endDate);
-  if (q) txs = txs.filter(t => { const c = findCat(t.type, t.category); return (t.title || '').toLowerCase().includes(q) || (t.note || '').toLowerCase().includes(q) || c.name.toLowerCase().includes(q); });
+  
+  // Apply Search
+  if (q) {
+    txs = txs.filter(t => { 
+      const c = findCat(t.type, t.category); 
+      return (t.title || '').toLowerCase().includes(q) || (t.note || '').toLowerCase().includes(q) || c.name.toLowerCase().includes(q) || (t.location || '').toLowerCase().includes(q); 
+    });
+  }
+
+  // Update Summary
+  const summaryBox = $('#historySummary');
+  const totalDisplay = $('#historyTotal');
+  if (filter !== 'all' || q !== '' || startDate !== '' || endDate !== '' || payFilter !== 'all') {
+    summaryBox.style.display = 'flex';
+    const totalIncome = sum(txs.filter(t => t.type === 'income'));
+    const totalExpense = sum(txs.filter(t => t.type === 'expense'));
+    const net = totalIncome - totalExpense;
+    totalDisplay.textContent = (net >= 0 ? '+' : '−') + fmt(Math.abs(net));
+    totalDisplay.className = `sum-amt ${net >= 0 ? 'pos' : 'neg'}`;
+  } else {
+    summaryBox.style.display = 'none';
+  }
+
   const box = $('#historyList');
-  if (!txs.length) { box.innerHTML = `<div class="card empty-state"><div class="es-emoji">🔍</div><h4>Nothing found</h4><p>Try a different filter, date, or search term.</p></div>`; return; }
+  if (!txs.length) { 
+    box.innerHTML = `<div class="card empty-state"><div class="es-emoji">🔍</div><h4>Nothing found</h4><p>Try adjusting your filters or search term.</p></div>`; 
+    return; 
+  }
+  
   const groups = new Map();
-  txs.forEach(t => { if (!groups.has(t.date)) groups.set(t.date, []); groups.get(t.date).push(t); });
+  txs.forEach(t => { 
+    const d = t.date.split('T')[0]; // Ensure clean date grouping
+    if (!groups.has(d)) groups.set(d, []); 
+    groups.get(d).push(t); 
+  });
+  
   box.innerHTML = [...groups.entries()].map(([date, items]) => {
     const net = items.reduce((a, t) => a + (t.type === 'income' ? t.amount : -t.amount), 0);
     return `<div class="day-group"><div class="day-head"><span>${dayLabel(date)}</span><b class="${net >= 0 ? 'pos' : 'neg'}">${net >= 0 ? '+' : '−'}${fmt(Math.abs(net))}</b></div><div class="card" style="padding:8px 14px"><ul class="tx-list">${items.map(t => txMarkup(t)).join('')}</ul></div></div>`;
   }).join('');
 }
+
 function renderAccount() {
   $('#topAvatar').textContent = initials(state.name); $('#profileAvatar').textContent = initials(state.name);
   $('#profileName').textContent = state.name; $('#profileEmail').textContent = state.email;
@@ -1147,7 +1179,19 @@ $$('.nav-item[data-view]').forEach(btn => btn.addEventListener('click', () => go
 document.addEventListener('click', e => { const link = e.target.closest('[data-view]'); if (link && !link.classList.contains('nav-item')) go(link.dataset.view); });
 $('#periodSelector').addEventListener('click', e => { const btn = e.target.closest('.period-btn'); if (!btn) return; state.dashboardPeriod = btn.dataset.period; $$('.period-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); renderDashboard(); });
 $('#chartToggle').addEventListener('click', e => { const btn = e.target.closest('button'); if (!btn) return; state.chartType = btn.dataset.chart; $$('#chartToggle button').forEach(b => b.classList.toggle('active', b === btn)); renderDashboard(); });
-$('#startDateFilter').addEventListener('change', renderHistory); $('#endDateFilter').addEventListener('change', renderHistory);
+
+$('#filterChips').addEventListener('click', e => {
+  const btn = e.target.closest('.chip');
+  if (!btn) return;
+  $$('#filterChips .chip').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderHistory();
+});
+
+$('#searchInput').addEventListener('input', renderHistory);
+$('#startDateFilter').addEventListener('change', renderHistory); 
+$('#endDateFilter').addEventListener('change', renderHistory);
+$('#paymentFilter').addEventListener('change', renderHistory);
 function clearDateFilter() { $('#startDateFilter').value = ''; $('#endDateFilter').value = ''; renderHistory(); }
 
 /* =====================================================================
@@ -1156,10 +1200,18 @@ function clearDateFilter() { $('#startDateFilter').value = ''; $('#endDateFilter
 let modalType = 'expense', selectedCat = 'food', selectedPay = 'Cash', editingId = null;
 function renderCatGrid() { $('#catGrid').innerHTML = CATEGORIES[modalType].map(c => `<button type="button" class="cat-item ${c.id === selectedCat ? 'selected' : ''}" data-cat="${c.id}"><i class="ph ${c.icon} cat-icon"></i><span class="cat-name">${c.name}</span></button>`).join(''); }
 function renderPayMethods() { $$('#payMethods .pay-item').forEach(b => b.classList.toggle('selected', b.dataset.pay === selectedPay)); }
-function setType(type) { modalType = type; if (!CATEGORIES[type].some(c => c.id === selectedCat)) selectedCat = CATEGORIES[type][0].id; $$('#typeToggle button').forEach(b => b.classList.toggle('active', b.dataset.type === type)); $('#titleLabel').textContent = type === 'expense' ? 'Expense Title' : 'Income Title'; renderCatGrid(); }
+function setType(type) { 
+  modalType = type; 
+  if (!CATEGORIES[type].some(c => c.id === selectedCat)) selectedCat = CATEGORIES[type][0].id; 
+  $$('#typeToggle button').forEach(b => b.classList.toggle('active', b.dataset.type === type)); 
+  $('#titleLabel').textContent = type === 'expense' ? 'Expense Title' : 'Income Title'; 
+  $('#titleInput').placeholder = type === 'expense' ? 'Lunch with team' : 'Salary';
+  renderCatGrid(); 
+}
 function openModal(type = 'expense', tx = null) {
   editingId = tx ? tx.id : null; modalType = tx ? tx.type : type; selectedCat = tx ? tx.category : CATEGORIES[modalType][0].id; selectedPay = tx ? (tx.paymentMethod || 'Cash') : 'Cash';
-  $('#titleInput').value = tx ? (tx.title || '') : ''; $('#amountInput').value = tx ? tx.amount : ''; $('#noteInput').value = tx ? (tx.note || '') : ''; $('#dateInput').value = tx ? tx.date : iso(new Date());
+  $('#titleInput').value = tx ? (tx.title || '') : ''; $('#amountInput').value = tx ? tx.amount : ''; $('#noteInput').value = tx ? (tx.note || '') : ''; $('#dateInput').value = tx ? tx.date.split('T')[0] : iso(new Date());
+  $('#locationInput').value = tx ? (tx.location || '') : '';
   $('#curSymbol').textContent = state.currency; $('#sheetTitle').textContent = tx ? 'Edit Transaction' : 'Add Transaction'; $('#saveTx').textContent = tx ? 'Update Transaction' : 'Save Transaction';
   setType(modalType); renderPayMethods(); $('#modal').classList.add('open'); document.body.style.overflow = 'hidden'; setTimeout(() => $('#amountInput').focus(), 260);
 }
@@ -1168,13 +1220,41 @@ $('#navAdd').addEventListener('click', () => openModal('expense')); $('#topAdd')
 $('#typeToggle').addEventListener('click', e => { const btn = e.target.closest('button[data-type]'); if (btn) setType(btn.dataset.type); });
 $('#catGrid').addEventListener('click', e => { const btn = e.target.closest('.cat-item'); if (!btn) return; selectedCat = btn.dataset.cat; renderCatGrid(); });
 $('#payMethods').addEventListener('click', e => { const btn = e.target.closest('.pay-item'); if (!btn) return; selectedPay = btn.dataset.pay; renderPayMethods(); });
+
+// Get Location Feature
+$('#getLocationBtn').addEventListener('click', () => {
+  if (navigator.geolocation) {
+    $('#getLocationBtn').innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude.toFixed(5);
+        const lon = pos.coords.longitude.toFixed(5);
+        $('#locationInput').value = `${lat}, ${lon}`;
+        $('#getLocationBtn').innerHTML = '<i class="ph ph-map-pin"></i>';
+        showToast('Location fetched!');
+      },
+      (err) => {
+        $('#getLocationBtn').innerHTML = '<i class="ph ph-map-pin"></i>';
+        showToast('Location access denied. Type manually.');
+      }
+    );
+  } else {
+    showToast('Geolocation not supported by this browser.');
+  }
+});
+
 $('#saveTx').addEventListener('click', () => {
   const amount = parseFloat($('#amountInput').value), title = $('#titleInput').value.trim();
   if (!amount || amount <= 0) { const w = $('#amountWrap'); w.classList.add('shake'); setTimeout(() => w.classList.remove('shake'), 400); $('#amountInput').focus(); return; }
   if (!title) { $('#titleInput').focus(); return showToast('Please enter a title'); }
-  const date = $('#dateInput').value || iso(new Date()), note = $('#noteInput').value.trim();
-  if (editingId) { const t = state.transactions.find(x => x.id === editingId); if (t) Object.assign(t, { type: modalType, amount, title, category: selectedCat, paymentMethod: selectedPay, note, date }); } 
-  else { state.transactions.push({ id: uid(), type: modalType, amount, title, category: selectedCat, paymentMethod: selectedPay, note, date, createdAt: Date.now(), deleted: false }); }
+  const date = $('#dateInput').value || iso(new Date()), note = $('#noteInput').value.trim(), location = $('#locationInput').value.trim();
+  
+  if (editingId) { 
+    const t = state.transactions.find(x => x.id === editingId); 
+    if (t) Object.assign(t, { type: modalType, amount, title, category: selectedCat, paymentMethod: selectedPay, note, date, location }); 
+  } else { 
+    state.transactions.push({ id: uid(), type: modalType, amount, title, category: selectedCat, paymentMethod: selectedPay, note, date, location, createdAt: Date.now(), deleted: false }); 
+  }
   persist(); closeModal('modal'); render(); showToast(editingId ? 'Transaction updated' : 'Transaction saved');
   syncData();
 });
@@ -1191,7 +1271,8 @@ function openViewModal(id) {
     <div class="detail-row"><span class="label">Type</span><span class="value" style="text-transform: capitalize;">${tx.type}</span></div>
     <div class="detail-row"><span class="label">Category</span><span class="value"><i class="ph ${cat.icon}" style="color:${cat.color}; margin-right:4px;"></i> ${cat.name}</span></div>
     <div class="detail-row"><span class="label">Payment Method</span><span class="value">${tx.paymentMethod || 'Cash'}</span></div>
-    <div class="detail-row"><span class="label">Date</span><span class="value">${new Date(tx.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span></div>
+    ${tx.location ? `<div class="detail-row"><span class="label">Location</span><span class="value"><i class="ph ph-map-pin"></i> ${escapeHtml(tx.location)}</span></div>` : ''}
+    <div class="detail-row"><span class="label">Date</span><span class="value">${dayLabel(tx.date)}</span></div>
     ${tx.note ? `<div class="detail-row" style="flex-direction: column; gap: 6px;"><span class="label">Note</span><span class="value" style="text-align: left; font-weight: 400; background: var(--surface-2); padding: 8px 12px; border-radius: 8px;">${escapeHtml(tx.note)}</span></div>` : ''}
   `;
   $('#viewModal').classList.add('open'); document.body.style.overflow = 'hidden';
@@ -1242,13 +1323,13 @@ $('#importJson').addEventListener('change', (e) => {
   reader.readAsText(file);
 });
 $('#exportCsv').addEventListener('click', () => {
-  const rows = [['Date', 'Type', 'Title', 'Category', 'Payment Method', 'Note', 'Amount', 'Currency']];
-  sortedTx().forEach(t => { rows.push([ t.date, t.type, t.title, findCat(t.type, t.category).name, t.paymentMethod, t.note || '', Number(t.amount).toFixed(2), state.currency ]); });
+  const rows = [['Date', 'Type', 'Title', 'Category', 'Payment Method', 'Note', 'Amount', 'Location', 'Currency']];
+  sortedTx().forEach(t => { rows.push([ t.date, t.type, t.title, findCat(t.type, t.category).name, t.paymentMethod, t.note || '', Number(t.amount).toFixed(2), t.location || '', state.currency ]); });
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\r\n');
   download('\uFEFF' + csv, `det-export-${iso(new Date())}.csv`, 'text/csv;charset=utf-8');
 });
 $('#exportXlsx').addEventListener('click', () => {
-  const rows = sortedTx().map(t => ({ Date: t.date, Type: t.type, Title: t.title, Category: findCat(t.type, t.category).name, 'Payment Method': t.paymentMethod, Note: t.note || '', Amount: Number(t.amount), Currency: state.currency }));
+  const rows = sortedTx().map(t => ({ Date: t.date, Type: t.type, Title: t.title, Category: findCat(t.type, t.category).name, 'Payment Method': t.paymentMethod, Note: t.note || '', Amount: Number(t.amount), Location: t.location || '', Currency: state.currency }));
   const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Transactions"); XLSX.writeFile(wb, `det-export-${iso(new Date())}.xlsx`);
 });
 $('#exportPdf').addEventListener('click', () => {
@@ -1272,9 +1353,7 @@ $('#syncSheetsBtn').addEventListener('click', async () => {
   const url = state.googleSheetUrl;
   if(!url || !url.startsWith('https://script.google.com/')) return showToast('Enter a valid Apps Script Web App URL');
   const btn = $('#syncSheetsBtn'), originalText = btn.textContent; btn.textContent = 'Syncing...'; btn.disabled = true;
-  
   await syncData();
-  
   btn.textContent = originalText; btn.disabled = false;
 });
 
