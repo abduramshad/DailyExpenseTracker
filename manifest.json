@@ -1,0 +1,23 @@
+{
+  "name": "Daily Expense Tracker",
+  "short_name": "DET",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f2f4fa",
+  "theme_color": "#6366f1",
+  "description": "Track your daily expenses and income easily.",
+  "icons": [
+    {
+      "src": "img/DailyExpenseTrackerLogo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "img/DailyExpenseTrackerLogo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
