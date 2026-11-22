@@ -1,4 +1,4 @@
-const CACHE_NAME = 'det-cache-v1';
+const CACHE_NAME = 'det-cache-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -34,6 +34,14 @@ self.addEventListener('activate', (e) => {
 
 // Fetch assets (Serve from cache if offline)
 self.addEventListener('fetch', (e) => {
+  if (e.request.mode === 'navigate') {
+    e.respondWith(
+      fetch(e.request).catch(() => {
+        return caches.match('./index.html');
+      })
+    );
+    return;
+  }
   e.respondWith(
     caches.match(e.request).then((response) => {
       return response || fetch(e.request);
