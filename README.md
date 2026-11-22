@@ -2,7 +2,7 @@ Google Sheet Sync Setup
 
 1. Create a new Google Sheet. Click Extensions > Apps Script.
 2. Delete any existing code, paste the script below, and click Save. Copy
-
+// Copy the code
 
 function doPost(e) {
   var lock = LockService.getScriptLock();
