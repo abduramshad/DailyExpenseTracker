@@ -24,6 +24,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
 
 <style>
+/* [Previous CSS remains completely unchanged, keeping it hidden to save space] */
 /* ============ THEME TOKENS ============ */
 :root{
   --bg:#f2f4fa; --surface:#ffffff; --surface-2:#f6f8fd; --text:#0f172a; --muted:#64748b; --border:#e6e9f3;
@@ -715,49 +716,39 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
     <div class="code-block">
       <button class="copy-btn" onclick="copyScript()">Copy</button>
       <pre id="appsScriptCode">function doPost(e) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  var data = JSON.parse(e.postData.contents);
-  var email = data.email;
-  var txs = data.transactions;
-  
-  var allData = sheet.getDataRange().getValues();
-  if (allData.length === 0) {
-    sheet.appendRow(['ID', 'Date', 'Type', 'Title', 'Category', 'Payment Method', 'Note', 'Amount', 'Email']);
-    allData = sheet.getDataRange().getValues();
-  }
-  
-  var existingRows = {};
-  for (var i = 1; i < allData.length; i++) {
-    if (allData[i][8] === email) existingRows[allData[i][0]] = i + 1;
-  }
-  
-  txs.forEach(function(t) {
-    var row = existingRows[t.id];
-    var rowData = [t.id, t.date, t.type, t.title, t.category, t.paymentMethod, t.note, t.amount, email];
-    if (t.deleted) {
-      if (row) { sheet.deleteRow(row); }
-    } else {
-      if (row) {
-        sheet.getRange(row, 1, 1, 9).setValues([rowData]);
-        delete existingRows[t.id];
-      } else {
-        sheet.appendRow(rowData);
-      }
-    }
-  });
-  
-  return ContentService.createTextOutput(JSON.stringify({"status": "success"})).setMimeType(ContentService.MimeType.JSON);
+  var lock = LockService.getScriptLock();
+  lock.tryLock(10000);
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var data = JSON.parse(e.postData.contents);
+    var email = data.email;
+    var txs = data.transactions || [];
+    if (sheet.getLastRow() === 0) sheet.appendRow(['ID', 'Date', 'Type', 'Title', 'Category', 'Payment Method', 'Note', 'Amount', 'Email']);
+    var allData = sheet.getDataRange().getValues();
+    var idToRow = {};
+    for (var i = 1; i < allData.length; i++) { if (allData[i][8] === email) idToRow[allData[i][0]] = i + 1; }
+    var rowsToDelete = [];
+    txs.forEach(function(t) {
+      var row = idToRow[t.id];
+      var rowData = [t.id, t.date, t.type, t.title, t.category, t.paymentMethod, t.note || '', t.amount, email];
+      if (t.deleted) { if (row) rowsToDelete.push(row); } 
+      else { if (row) { sheet.getRange(row, 1, 1, 9).setValues([rowData]); delete idToRow[t.id]; } else { sheet.appendRow(rowData); } }
+    });
+    rowsToDelete.sort(function(a, b) { return b - a; });
+    rowsToDelete.forEach(function(row) { sheet.deleteRow(row); });
+    return ContentService.createTextOutput(JSON.stringify({"status": "success"})).setMimeType(ContentService.MimeType.JSON);
+  } catch (error) { return ContentService.createTextOutput(JSON.stringify({"status": "error"})).setMimeType(ContentService.MimeType.JSON); } finally { lock.releaseLock(); }
 }
-
 function doGet(e) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   var email = e.parameter.email;
-  var data = sheet.getDataRange().getValues();
-  if (data.length <= 1) return ContentService.createTextOutput(JSON.stringify({"transactions": []})).setMimeType(ContentService.MimeType.JSON);
-  var headers = data[0]; var emailIdx = headers.indexOf('Email'); var txs = [];
-  for (var i = 1; i < data.length; i++) {
-    if (data[i][emailIdx] === email) {
-      txs.push({ id: data[i][0], date: data[i][1], type: data[i][2], title: data[i][3], category: data[i][4], paymentMethod: data[i][5], note: data[i][6], amount: parseFloat(data[i][7]) });
+  if (!email) return ContentService.createTextOutput(JSON.stringify({"transactions": []})).setMimeType(ContentService.MimeType.JSON);
+  var allData = sheet.getDataRange().getValues();
+  if (allData.length <= 1) return ContentService.createTextOutput(JSON.stringify({"transactions": []})).setMimeType(ContentService.MimeType.JSON);
+  var headers = allData[0]; var emailIdx = headers.indexOf('Email'); var txs = [];
+  for (var i = 1; i < allData.length; i++) {
+    if (allData[i][emailIdx] === email) {
+      txs.push({ id: allData[i][0], date: allData[i][1], type: allData[i][2], title: allData[i][3], category: allData[i][4], paymentMethod: allData[i][5], note: allData[i][6], amount: parseFloat(allData[i][7]) });
     }
   }
   return ContentService.createTextOutput(JSON.stringify({"transactions": txs})).setMimeType(ContentService.MimeType.JSON);
@@ -858,7 +849,7 @@ function handleLogin() {
   loadState(email);
   $('#loginOverlay').classList.add('hidden');
   render();
-  pullFromSheet(); // Auto-sync on login
+  syncData(); // Auto-sync on login
 }
 function handleLogout() { localStorage.removeItem('det_current_user'); location.reload(); }
 function loadState(email) {
@@ -869,31 +860,32 @@ function loadState(email) {
 }
 function persist() { if(state.email) localStorage.setItem('det_data_' + state.email, JSON.stringify(state)); }
 
-async function pullFromSheet() {
+// Unified Sync Logic
+async function syncData() {
   if (!state.googleSheetUrl) return;
+  
   try {
-    const res = await fetch(`${state.googleSheetUrl}?email=${encodeURIComponent(state.email)}`);
-    const data = await res.json();
-    if (data && data.transactions) {
-      // Merge remote data with local (keep local items not in remote, to prevent offline data loss)
-      const localMap = new Map(state.transactions.map(t => [t.id, t]));
-      data.transactions.forEach(rt => localMap.set(rt.id, rt)); // Remote overwrites local
-      state.transactions = Array.from(localMap.values());
-      persist();
-      render();
-      showToast('Data synced from Google Sheets');
-    }
-  } catch(e) { console.log('Pull failed', e); }
-}
-
-async function pushToSheet() {
-  if (!state.googleSheetUrl) return;
-  try {
+    // 1. Push local data to sheet first (makes sure offline entries are saved)
     await fetch(state.googleSheetUrl, {
       method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'sync', email: state.email, transactions: state.transactions })
     });
-  } catch(e) { console.log('Push failed', e); }
+    
+    // 2. Wait briefly for Google Scripts to process the POST
+    await new Promise(r => setTimeout(r, 1500));
+    
+    // 3. Fetch the latest data from the sheet
+    const res = await fetch(`${state.googleSheetUrl}?email=${encodeURIComponent(state.email)}`);
+    const data = await res.json();
+    
+    if (data && data.transactions) {
+      // Overwrite local state with the sheet's state (Sheet is the source of truth)
+      state.transactions = data.transactions;
+      persist();
+      render();
+      showToast('Data synced successfully!');
+    }
+  } catch(e) { console.log('Sync failed', e); showToast('Sync failed. Check connection.'); }
 }
 
 /* =====================================================================
@@ -904,7 +896,7 @@ function calculateBalances() {
   let bank = Number(state.baseBank) || 0;
   let creditUsed = 0;
   state.transactions.forEach(t => {
-    if(t.deleted) return; // Ignore deleted
+    if(t.deleted) return;
     const amt = Number(t.amount);
     if (t.paymentMethod === 'Cash') wallet += (t.type === 'income' ? amt : -amt);
     else if (t.paymentMethod === 'Credit Card') creditUsed += (t.type === 'expense' ? amt : -amt);
@@ -926,7 +918,7 @@ function updateCurrentBalances() {
   state.baseWallet = newWallet - cashEffect;
   state.baseBank = newBank - bankEffect;
   persist(); render(); showToast('Balances updated successfully!');
-  pushToSheet();
+  syncData();
 }
 
 /* =====================================================================
@@ -1129,7 +1121,7 @@ $('#saveTx').addEventListener('click', () => {
   if (editingId) { const t = state.transactions.find(x => x.id === editingId); if (t) Object.assign(t, { type: modalType, amount, title, category: selectedCat, paymentMethod: selectedPay, note, date }); } 
   else { state.transactions.push({ id: uid(), type: modalType, amount, title, category: selectedCat, paymentMethod: selectedPay, note, date, createdAt: Date.now(), deleted: false }); }
   persist(); closeModal('modal'); render(); showToast(editingId ? 'Transaction updated' : 'Transaction saved');
-  pushToSheet();
+  syncData();
 });
 
 /* =====================================================================
@@ -1151,7 +1143,7 @@ function openViewModal(id) {
 }
 function editFromView() { const tx = state.transactions.find(t => t.id === currentViewId); closeModal('viewModal'); setTimeout(() => openModal(tx.type, tx), 200); }
 function deleteFromView() { openConfirmModal('Are you sure you want to delete this transaction?', () => { closeModal('viewModal'); deleteTx(currentViewId); }); }
-function deleteTx(id) { const tx = state.transactions.find(t => t.id === id); if(tx) tx.deleted = true; persist(); render(); showToast('Transaction deleted'); pushToSheet(); }
+function deleteTx(id) { const tx = state.transactions.find(t => t.id === id); if(tx) tx.deleted = true; persist(); render(); showToast('Transaction deleted'); syncData(); }
 
 /* =====================================================================
    CUSTOM CONFIRM MODAL
@@ -1182,12 +1174,12 @@ $('#importJson').addEventListener('change', (e) => {
   const reader = new FileReader();
   reader.onload = (event) => {
     try {
-      const importedData = JSON.parse(event.targetresult);
+      const importedData = JSON.parse(event.target.result);
       if (importedData.transactions && Array.isArray(importedData.transactions)) {
         state.transactions = importedData.transactions; if (importedData.baseWallet !== undefined) state.baseWallet = importedData.baseWallet;
         if (importedData.baseBank !== undefined) state.baseBank = importedData.baseBank; if (importedData.creditLimit !== undefined) state.creditLimit = importedData.creditLimit;
         persist(); render(); showToast('Data restored successfully!');
-        pushToSheet();
+        syncData();
       } else { showToast('Invalid backup file format.'); }
     } catch (err) { showToast('Error reading JSON file.'); }
     e.target.value = '';
@@ -1213,7 +1205,7 @@ $('#exportPdf').addEventListener('click', () => {
 });
 function clearAllData() { 
   state.transactions.forEach(t => t.deleted = true); 
-  persist(); render(); go('dashboard'); showToast('All data cleared'); pushToSheet(); 
+  persist(); render(); go('dashboard'); showToast('All data cleared'); syncData(); 
 }
 
 /* =====================================================================
@@ -1226,8 +1218,7 @@ $('#syncSheetsBtn').addEventListener('click', async () => {
   if(!url || !url.startsWith('https://script.google.com/')) return showToast('Enter a valid Apps Script Web App URL');
   const btn = $('#syncSheetsBtn'), originalText = btn.textContent; btn.textContent = 'Syncing...'; btn.disabled = true;
   
-  await pushToSheet();
-  await pullFromSheet();
+  await syncData();
   
   btn.textContent = originalText; btn.disabled = false;
 });
@@ -1288,7 +1279,7 @@ if (currentUser) {
   loadState(currentUser); 
   $('#loginOverlay').classList.add('hidden'); 
   render(); 
-  pullFromSheet(); // Auto-sync on boot
+  syncData(); // Auto-sync on boot
 } 
 else { $('#loginOverlay').classList.remove('hidden'); }
 
