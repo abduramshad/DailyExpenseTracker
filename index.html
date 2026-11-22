@@ -24,7 +24,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
 
 <style>
-/* [Previous CSS remains completely unchanged, I am keeping it hidden to save space] */
 /* ============ THEME TOKENS ============ */
 :root{
   --bg:#f2f4fa; --surface:#ffffff; --surface-2:#f6f8fd; --text:#0f172a; --muted:#64748b; --border:#e6e9f3;
@@ -718,18 +717,38 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
       <pre id="appsScriptCode">function doPost(e) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   var data = JSON.parse(e.postData.contents);
-  if (data.action === 'sync') {
-    sheet.clear();
+  var email = data.email;
+  var txs = data.transactions;
+  
+  var allData = sheet.getDataRange().getValues();
+  if (allData.length === 0) {
     sheet.appendRow(['ID', 'Date', 'Type', 'Title', 'Category', 'Payment Method', 'Note', 'Amount', 'Email']);
-    if (data.transactions && data.transactions.length > 0) {
-      var rows = data.transactions.map(function(t) {
-        return [t.id, t.date, t.type, t.title, t.category, t.paymentMethod, t.note, t.amount, data.email];
-      });
-      sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
-    }
-    return ContentService.createTextOutput(JSON.stringify({"status": "success"})).setMimeType(ContentService.MimeType.JSON);
+    allData = sheet.getDataRange().getValues();
   }
+  
+  var existingRows = {};
+  for (var i = 1; i < allData.length; i++) {
+    if (allData[i][8] === email) existingRows[allData[i][0]] = i + 1;
+  }
+  
+  txs.forEach(function(t) {
+    var row = existingRows[t.id];
+    var rowData = [t.id, t.date, t.type, t.title, t.category, t.paymentMethod, t.note, t.amount, email];
+    if (t.deleted) {
+      if (row) { sheet.deleteRow(row); }
+    } else {
+      if (row) {
+        sheet.getRange(row, 1, 1, 9).setValues([rowData]);
+        delete existingRows[t.id];
+      } else {
+        sheet.appendRow(rowData);
+      }
+    }
+  });
+  
+  return ContentService.createTextOutput(JSON.stringify({"status": "success"})).setMimeType(ContentService.MimeType.JSON);
 }
+
 function doGet(e) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   var email = e.parameter.email;
@@ -831,7 +850,7 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 3000);
 }
 
-/* ---------- Auth ---------- */
+/* ---------- Auth & Sync ---------- */
 function handleLogin() {
   const email = $('#loginEmail').value.trim().toLowerCase();
   if (!email || !email.includes('@')) return alert('Please enter a valid email address.');
@@ -839,6 +858,7 @@ function handleLogin() {
   loadState(email);
   $('#loginOverlay').classList.add('hidden');
   render();
+  pullFromSheet(); // Auto-sync on login
 }
 function handleLogout() { localStorage.removeItem('det_current_user'); location.reload(); }
 function loadState(email) {
@@ -849,6 +869,33 @@ function loadState(email) {
 }
 function persist() { if(state.email) localStorage.setItem('det_data_' + state.email, JSON.stringify(state)); }
 
+async function pullFromSheet() {
+  if (!state.googleSheetUrl) return;
+  try {
+    const res = await fetch(`${state.googleSheetUrl}?email=${encodeURIComponent(state.email)}`);
+    const data = await res.json();
+    if (data && data.transactions) {
+      // Merge remote data with local (keep local items not in remote, to prevent offline data loss)
+      const localMap = new Map(state.transactions.map(t => [t.id, t]));
+      data.transactions.forEach(rt => localMap.set(rt.id, rt)); // Remote overwrites local
+      state.transactions = Array.from(localMap.values());
+      persist();
+      render();
+      showToast('Data synced from Google Sheets');
+    }
+  } catch(e) { console.log('Pull failed', e); }
+}
+
+async function pushToSheet() {
+  if (!state.googleSheetUrl) return;
+  try {
+    await fetch(state.googleSheetUrl, {
+      method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'sync', email: state.email, transactions: state.transactions })
+    });
+  } catch(e) { console.log('Push failed', e); }
+}
+
 /* =====================================================================
    BALANCE CALCULATIONS
    ===================================================================== */
@@ -857,6 +904,7 @@ function calculateBalances() {
   let bank = Number(state.baseBank) || 0;
   let creditUsed = 0;
   state.transactions.forEach(t => {
+    if(t.deleted) return; // Ignore deleted
     const amt = Number(t.amount);
     if (t.paymentMethod === 'Cash') wallet += (t.type === 'income' ? amt : -amt);
     else if (t.paymentMethod === 'Credit Card') creditUsed += (t.type === 'expense' ? amt : -amt);
@@ -870,6 +918,7 @@ function updateCurrentBalances() {
   state.creditLimit = parseFloat($('#creditLimitInput').value) || 50000;
   let cashEffect = 0, bankEffect = 0;
   state.transactions.forEach(t => {
+    if(t.deleted) return;
     const val = (t.type === 'income' ? Number(t.amount) : -Number(t.amount));
     if (t.paymentMethod === 'Cash') cashEffect += val;
     else if (t.paymentMethod !== 'Credit Card') bankEffect += val;
@@ -877,6 +926,7 @@ function updateCurrentBalances() {
   state.baseWallet = newWallet - cashEffect;
   state.baseBank = newBank - bankEffect;
   persist(); render(); showToast('Balances updated successfully!');
+  pushToSheet();
 }
 
 /* =====================================================================
@@ -924,14 +974,14 @@ function renderDynamicBarChart(el) {
     for (let i = 6; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i); labels.push(d.toLocaleDateString('en-US', { weekday: 'short' }));
       const dStr = iso(d);
-      incomeData.push(sum(state.transactions.filter(t => t.date === dStr && t.type === 'income')));
-      expenseData.push(sum(state.transactions.filter(t => t.date === dStr && t.type === 'expense')));
+      incomeData.push(sum(state.transactions.filter(t => !t.deleted && t.date === dStr && t.type === 'income')));
+      expenseData.push(sum(state.transactions.filter(t => !t.deleted && t.date === dStr && t.type === 'expense')));
     }
   } else if (state.dashboardPeriod === 'month') {
     title = "Weekly Breakdown"; labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4', 'Week 5'];
     incomeData = [0,0,0,0,0]; expenseData = [0,0,0,0,0];
     const ym = `${today.getFullYear()}-${pad(today.getMonth() + 1)}`;
-    state.transactions.filter(t => t.date.startsWith(ym)).forEach(t => {
+    state.transactions.filter(t => !t.deleted && t.date.startsWith(ym)).forEach(t => {
       const weekIdx = Math.min(Math.floor((parseInt(t.date.split('-')[2]) - 1) / 7), 4);
       if (t.type === 'income') incomeData[weekIdx] += Number(t.amount); else expenseData[weekIdx] += Number(t.amount);
     });
@@ -941,8 +991,8 @@ function renderDynamicBarChart(el) {
     for (let i = 5; i >= 0; i--) {
       const d = new Date(today.getFullYear(), today.getMonth() - i, 1); labels.push(months[d.getMonth()]);
       const ym = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-      incomeData.push(sum(state.transactions.filter(t => t.date.startsWith(ym) && t.type === 'income')));
-      expenseData.push(sum(state.transactions.filter(t => t.date.startsWith(ym) && t.type === 'expense')));
+      incomeData.push(sum(state.transactions.filter(t => !t.deleted && t.date.startsWith(ym) && t.type === 'income')));
+      expenseData.push(sum(state.transactions.filter(t => !t.deleted && t.date.startsWith(ym) && t.type === 'expense')));
     }
   }
   $('#barChartTitle').textContent = title;
@@ -983,6 +1033,7 @@ function escapeHtml(s) { return String(s || '').replace(/[&<>"']/g, c => ({'&':'
 function getFilteredTx() {
   const now = new Date(), ym = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`, today = iso(now);
   return state.transactions.filter(t => {
+    if (t.deleted) return false;
     if (state.dashboardPeriod === 'today') return t.date === today;
     if (state.dashboardPeriod === 'month') return t.date.startsWith(ym);
     return true;
@@ -1011,7 +1062,7 @@ function renderDashboard() {
   const recent = sortedTx().slice(0, 5);
   $('#recentList').innerHTML = recent.length ? recent.map(t => txMarkup(t, false)).join('') : `<li class="empty-state"><div class="es-emoji">🧾</div><h4>No transactions yet</h4><p>Tap “Add” to record your first income or expense.</p></li>`;
 }
-function sortedTx() { return [...state.transactions].sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0)); }
+function sortedTx() { return [...state.transactions].filter(t => !t.deleted).sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0)); }
 function renderHistory() {
   const filter = $('#filterChips .chip.active')?.dataset.filter || 'all', q = ($('#searchInput').value || '').toLowerCase().trim();
   const startDate = $('#startDateFilter').value, endDate = $('#endDateFilter').value;
@@ -1076,8 +1127,9 @@ $('#saveTx').addEventListener('click', () => {
   if (!title) { $('#titleInput').focus(); return showToast('Please enter a title'); }
   const date = $('#dateInput').value || iso(new Date()), note = $('#noteInput').value.trim();
   if (editingId) { const t = state.transactions.find(x => x.id === editingId); if (t) Object.assign(t, { type: modalType, amount, title, category: selectedCat, paymentMethod: selectedPay, note, date }); } 
-  else { state.transactions.push({ id: uid(), type: modalType, amount, title, category: selectedCat, paymentMethod: selectedPay, note, date, createdAt: Date.now() }); }
+  else { state.transactions.push({ id: uid(), type: modalType, amount, title, category: selectedCat, paymentMethod: selectedPay, note, date, createdAt: Date.now(), deleted: false }); }
   persist(); closeModal('modal'); render(); showToast(editingId ? 'Transaction updated' : 'Transaction saved');
+  pushToSheet();
 });
 
 /* =====================================================================
@@ -1099,7 +1151,7 @@ function openViewModal(id) {
 }
 function editFromView() { const tx = state.transactions.find(t => t.id === currentViewId); closeModal('viewModal'); setTimeout(() => openModal(tx.type, tx), 200); }
 function deleteFromView() { openConfirmModal('Are you sure you want to delete this transaction?', () => { closeModal('viewModal'); deleteTx(currentViewId); }); }
-function deleteTx(id) { state.transactions = state.transactions.filter(t => t.id !== id); persist(); render(); showToast('Transaction deleted'); }
+function deleteTx(id) { const tx = state.transactions.find(t => t.id === id); if(tx) tx.deleted = true; persist(); render(); showToast('Transaction deleted'); pushToSheet(); }
 
 /* =====================================================================
    CUSTOM CONFIRM MODAL
@@ -1130,11 +1182,12 @@ $('#importJson').addEventListener('change', (e) => {
   const reader = new FileReader();
   reader.onload = (event) => {
     try {
-      const importedData = JSON.parse(event.target.result);
+      const importedData = JSON.parse(event.targetresult);
       if (importedData.transactions && Array.isArray(importedData.transactions)) {
         state.transactions = importedData.transactions; if (importedData.baseWallet !== undefined) state.baseWallet = importedData.baseWallet;
         if (importedData.baseBank !== undefined) state.baseBank = importedData.baseBank; if (importedData.creditLimit !== undefined) state.creditLimit = importedData.creditLimit;
         persist(); render(); showToast('Data restored successfully!');
+        pushToSheet();
       } else { showToast('Invalid backup file format.'); }
     } catch (err) { showToast('Error reading JSON file.'); }
     e.target.value = '';
@@ -1158,7 +1211,10 @@ $('#exportPdf').addEventListener('click', () => {
   doc.autoTable({ startY: 40, head: [['Date', 'Type', 'Title', 'Category', 'Method', 'Amount']], body: rows, theme: 'grid', headStyles: { fillColor: [99, 102, 241] }, styles: { fontSize: 9 } });
   doc.save(`det-export-${iso(new Date())}.pdf`);
 });
-function clearAllData() { state.transactions = []; persist(); render(); go('dashboard'); showToast('All data cleared'); }
+function clearAllData() { 
+  state.transactions.forEach(t => t.deleted = true); 
+  persist(); render(); go('dashboard'); showToast('All data cleared'); pushToSheet(); 
+}
 
 /* =====================================================================
    GOOGLE SHEETS SYNC & README
@@ -1168,17 +1224,12 @@ $('#googleSheetUrlInput').addEventListener('change', (e) => { state.googleSheetU
 $('#syncSheetsBtn').addEventListener('click', async () => {
   const url = state.googleSheetUrl;
   if(!url || !url.startsWith('https://script.google.com/')) return showToast('Enter a valid Apps Script Web App URL');
-  const btn = $('#syncSheetsBtn'), originalText = btn.textContent; btn.textContent = '...'; btn.disabled = true;
-  try {
-    await fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'sync', email: state.email, transactions: state.transactions }) });
-    setTimeout(async () => {
-      try {
-        const res = await fetch(`${url}?email=${encodeURIComponent(state.email)}`); const data = await res.json();
-        if (data && data.transactions && data.transactions.length >= state.transactions.length) { state.transactions = data.transactions; persist(); render(); showToast('Data synced with Google Sheets!'); }
-      } catch(e) { console.log('Fetch failed, but data was pushed.'); showToast('Data pushed to sheet.'); }
-      finally { btn.textContent = originalText; btn.disabled = false; }
-    }, 1500);
-  } catch(e) { showToast('Sync failed. Check URL or permissions.'); btn.textContent = originalText; btn.disabled = false; }
+  const btn = $('#syncSheetsBtn'), originalText = btn.textContent; btn.textContent = 'Syncing...'; btn.disabled = true;
+  
+  await pushToSheet();
+  await pullFromSheet();
+  
+  btn.textContent = originalText; btn.disabled = false;
 });
 
 /* =====================================================================
@@ -1233,7 +1284,12 @@ $('#installBtnSettings').addEventListener('click', async () => {
    BOOT
    ===================================================================== */
 const currentUser = localStorage.getItem('det_current_user');
-if (currentUser) { loadState(currentUser); $('#loginOverlay').classList.add('hidden'); render(); } 
+if (currentUser) { 
+  loadState(currentUser); 
+  $('#loginOverlay').classList.add('hidden'); 
+  render(); 
+  pullFromSheet(); // Auto-sync on boot
+} 
 else { $('#loginOverlay').classList.remove('hidden'); }
 
 // Register Service Worker
