@@ -39,7 +39,7 @@ function doPost(e) {
 
     txs.forEach(function(t) {
       var row = idToRow[t.id];
-      var cleanDate = t.date ? String(t.date).split('T')[0] : ''; 
+      var cleanDate = t.date ? String(t.date) : ''; 
       var rowData = [t.id, cleanDate, t.type, t.title, t.category, t.paymentMethod, t.note || '', t.amount, t.location || '', email];
 
       if (t.deleted) {
@@ -100,9 +100,13 @@ function doGet(e) {
          var rawDate = dateIdx !== -1 ? row[dateIdx] : "";
          var cleanDate = "";
          if (rawDate instanceof Date) {
-           cleanDate = Utilities.formatDate(rawDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+           cleanDate = Utilities.formatDate(rawDate, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss");
          } else if (rawDate) {
-           cleanDate = String(rawDate).split('T')[0];
+           cleanDate = String(rawDate);
+           // Clean up bad data that might have been saved previously
+           if (cleanDate.toLowerCase() === 'undefined' || cleanDate.toLowerCase() === 'invalid date') {
+             cleanDate = "";
+           }
          }
          
          txs.push({
