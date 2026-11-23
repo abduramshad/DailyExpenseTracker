@@ -39,8 +39,12 @@ function doPost(e) {
 
     txs.forEach(function(t) {
       var row = idToRow[t.id];
-      var cleanDate = t.date ? String(t.date) : ''; 
-      var rowData = [t.id, cleanDate, t.type, t.title, t.category, t.paymentMethod, t.note || '', t.amount, t.location || '', email];
+      var cleanDate = t.date ? String(t.date).trim() : ''; 
+      
+      // Force Google Sheets to keep it as plain text so it doesn't auto-format with GMT timezones
+      var sheetDate = cleanDate ? "'" + cleanDate : "";
+      
+      var rowData = [t.id, sheetDate, t.type, t.title, t.category, t.paymentMethod, t.note || '', t.amount, t.location || '', email];
 
       if (t.deleted) {
         if (row) rowsToDelete.push(row);
@@ -99,13 +103,14 @@ function doGet(e) {
       if (row[emailIdx] && String(row[emailIdx]).toLowerCase().trim() === String(email).toLowerCase().trim()) {
          var rawDate = dateIdx !== -1 ? row[dateIdx] : "";
          var cleanDate = "";
-         if (rawDate instanceof Date) {
-           cleanDate = Utilities.formatDate(rawDate, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss");
-         } else if (rawDate) {
-           cleanDate = String(rawDate);
-           // Clean up bad data that might have been saved previously
-           if (cleanDate.toLowerCase() === 'undefined' || cleanDate.toLowerCase() === 'invalid date') {
-             cleanDate = "";
+         
+         if (rawDate) {
+           var parsedDate = new Date(rawDate);
+           if (!isNaN(parsedDate.getTime())) {
+             // Output strictly in local ISO format (YYYY-MM-DDTHH:mm:ss) so frontend parses it perfectly
+             cleanDate = Utilities.formatDate(parsedDate, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss");
+           } else {
+             cleanDate = String(rawDate); // Fallback
            }
          }
          
