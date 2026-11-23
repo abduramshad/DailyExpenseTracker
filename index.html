@@ -688,7 +688,6 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
       </div>
     </div>
 
-    <!-- Added Time Input side by side with Date -->
     <div class="row2">
       <label class="field">
         <span>Date</span>
@@ -795,8 +794,9 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
 
     txs.forEach(function(t) {
       var row = idToRow[t.id];
-      var cleanDate = t.date ? String(t.date) : ''; 
-      var rowData = [t.id, cleanDate, t.type, t.title, t.category, t.paymentMethod, t.note || '', t.amount, t.location || '', email];
+      var cleanDate = t.date ? String(t.date).trim() : ''; 
+      var sheetDate = cleanDate ? "'" + cleanDate : "";
+      var rowData = [t.id, sheetDate, t.type, t.title, t.category, t.paymentMethod, t.note || '', t.amount, t.location || '', email];
 
       if (t.deleted) {
         if (row) rowsToDelete.push(row);
@@ -855,12 +855,13 @@ function doGet(e) {
       if (row[emailIdx] && String(row[emailIdx]).toLowerCase().trim() === String(email).toLowerCase().trim()) {
          var rawDate = dateIdx !== -1 ? row[dateIdx] : "";
          var cleanDate = "";
-         if (rawDate instanceof Date) {
-           cleanDate = Utilities.formatDate(rawDate, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss");
-         } else if (rawDate) {
-           cleanDate = String(rawDate);
-           if (cleanDate.toLowerCase() === 'undefined' || cleanDate.toLowerCase() === 'invalid date') {
-             cleanDate = "";
+         
+         if (rawDate) {
+           var parsedDate = new Date(rawDate);
+           if (!isNaN(parsedDate.getTime())) {
+             cleanDate = Utilities.formatDate(parsedDate, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss");
+           } else {
+             cleanDate = String(rawDate);
            }
          }
          
@@ -1081,49 +1082,42 @@ function fmtCompact(n) {
 }
 function initials(name) { return name ? name.trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() : 'U'; }
 
-function dayLabel(dateStr) {
-  // Failsafe for empty, undefined, or invalid dates
-  if (!dateStr || String(dateStr).trim() === '' || String(dateStr).toLowerCase() === 'invalid date' || String(dateStr).toLowerCase() === 'undefined') return 'Unknown Date';
-  
-  let datePart = String(dateStr).split('T')[0];
-  let timePart = String(dateStr).split('T')[1] || '';
-  
-  // Handle cases where date is formatted with a space instead of T
-  if (datePart.includes(' ')) {
-    let parts = datePart.split(' ');
-    datePart = parts[0];
-    if (!timePart) timePart = parts[1];
-  }
+// NEW ROBUST DATE FUNCTIONS
+function getCleanDateStr(dateStr) {
+  if (!dateStr) return '';
+  let d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
-  const d = new Date(datePart + 'T00:00:00');
+function dayLabel(dateStr) {
+  if (!dateStr) return 'Unknown Date';
+  let d = new Date(dateStr);
   if (isNaN(d.getTime())) return 'Unknown Date';
-  
+
+  const cleanDate = getCleanDateStr(dateStr);
   const today = new Date();
-  const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+  const todayStr = getCleanDateStr(today.toISOString());
   const y = new Date(today); y.setDate(y.getDate() - 1);
-  const yStr = `${y.getFullYear()}-${pad(y.getMonth() + 1)}-${pad(y.getDate())}`;
-  
+  const yStr = getCleanDateStr(y.toISOString());
+
   let dateText = '';
-  if (datePart === todayStr) dateText = 'Today';
-  else if (datePart === yStr) dateText = 'Yesterday';
+  if (cleanDate === todayStr) dateText = 'Today';
+  else if (cleanDate === yStr) dateText = 'Yesterday';
   else {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     dateText = `${days[d.getDay()]}, ${pad(d.getDate())}-${months[d.getMonth()]}-${d.getFullYear()}`;
   }
-  
-  // Format time if present
-  if (timePart) {
-    let timeArr = timePart.split(':');
-    if (timeArr.length >= 2) {
-      let h = parseInt(timeArr[0]);
-      let m = timeArr[1];
-      let ampm = h >= 12 ? 'PM' : 'AM';
-      h = h % 12; if (h === 0) h = 12;
-      return `${dateText} at ${h}:${m} ${ampm}`;
-    }
+
+  const hours = d.getHours();
+  const minutes = d.getMinutes();
+  if (hours !== 0 || minutes !== 0) {
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const h12 = hours % 12 || 12;
+    return `${dateText} at ${h12}:${pad(minutes)} ${ampm}`;
   }
-  
+
   return dateText;
 }
 
@@ -1150,16 +1144,18 @@ function renderDynamicBarChart(el) {
     for (let i = 6; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i); labels.push(d.toLocaleDateString('en-US', { weekday: 'short' }));
       const dStr = iso(d);
-      incomeData.push(sum(state.transactions.filter(t => !t.deleted && String(t.date).split('T')[0] === dStr && t.type === 'income')));
-      expenseData.push(sum(state.transactions.filter(t => !t.deleted && String(t.date).split('T')[0] === dStr && t.type === 'expense')));
+      incomeData.push(sum(state.transactions.filter(t => !t.deleted && getCleanDateStr(t.date) === dStr && t.type === 'income')));
+      expenseData.push(sum(state.transactions.filter(t => !t.deleted && getCleanDateStr(t.date) === dStr && t.type === 'expense')));
     }
   } else if (state.dashboardPeriod === 'month') {
     title = "Weekly Breakdown"; labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4', 'Week 5'];
     incomeData = [0,0,0,0,0]; expenseData = [0,0,0,0,0];
     const ym = `${today.getFullYear()}-${pad(today.getMonth() + 1)}`;
     state.transactions.filter(t => !t.deleted && String(t.date).startsWith(ym)).forEach(t => {
-      const weekIdx = Math.min(Math.floor((parseInt(t.date.split('-')[2]) - 1) / 7), 4);
-      if (t.type === 'income') incomeData[weekIdx] += Number(t.amount); else expenseData[weekIdx] += Number(t.amount);
+      const weekIdx = Math.min(Math.floor((parseInt(getCleanDateStr(t.date).split('-')[2]) - 1) / 7), 4);
+      if (weekIdx >= 0 && weekIdx < 5) {
+        if (t.type === 'income') incomeData[weekIdx] += Number(t.amount); else expenseData[weekIdx] += Number(t.amount);
+      }
     });
   } else {
     title = "6-Month Trend";
@@ -1208,7 +1204,7 @@ function getFilteredTx() {
   const now = new Date(), ym = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`, today = iso(now);
   return state.transactions.filter(t => {
     if (t.deleted) return false;
-    const tDate = t.date ? String(t.date).split('T')[0] : '';
+    const tDate = getCleanDateStr(t.date);
     if (state.dashboardPeriod === 'today') return tDate === today;
     if (state.dashboardPeriod === 'month') return tDate.startsWith(ym);
     return true;
@@ -1243,8 +1239,8 @@ function renderDashboard() {
 
 function sortedTx() { 
   return [...state.transactions].filter(t => !t.deleted).sort((a, b) => {
-    const dateA = a.date ? String(a.date).split('T')[0] : '';
-    const dateB = b.date ? String(b.date).split('T')[0] : '';
+    const dateA = getCleanDateStr(a.date);
+    const dateB = getCleanDateStr(b.date);
     return dateB.localeCompare(dateA) || (b.createdAt || 0) - (a.createdAt || 0);
   }); 
 }
@@ -1260,8 +1256,8 @@ function renderHistory() {
   
   if (filter !== 'all') txs = txs.filter(t => t.type === filter);
   if (payFilter !== 'all') txs = txs.filter(t => t.paymentMethod === payFilter);
-  if (startDate) txs = txs.filter(t => String(t.date).split('T')[0] >= startDate);
-  if (endDate) txs = txs.filter(t => String(t.date).split('T')[0] <= endDate);
+  if (startDate) txs = txs.filter(t => getCleanDateStr(t.date) >= startDate);
+  if (endDate) txs = txs.filter(t => getCleanDateStr(t.date) <= endDate);
   
   if (q) {
     txs = txs.filter(t => { 
@@ -1291,9 +1287,11 @@ function renderHistory() {
   
   const groups = new Map();
   txs.forEach(t => { 
-    const d = String(t.date).split('T')[0]; 
-    if (!groups.has(d)) groups.set(d, []); 
-    groups.get(d).push(t); 
+    const d = getCleanDateStr(t.date); 
+    if (d) {
+      if (!groups.has(d)) groups.set(d, []); 
+      groups.get(d).push(t); 
+    }
   });
   
   box.innerHTML = [...groups.entries()].map(([date, items]) => {
@@ -1355,7 +1353,19 @@ function openModal(type = 'expense', tx = null) {
   editingId = tx ? tx.id : null; modalType = tx ? tx.type : type; selectedCat = tx ? tx.category : CATEGORIES[modalType][0].id; selectedPay = tx ? (tx.paymentMethod || 'Cash') : 'Cash';
   
   const dVal = tx && tx.date ? String(tx.date) : iso(new Date());
-  const dtParts = dVal.split('T');
+  let dtParts = dVal.split('T');
+  
+  if (dtParts.length === 1) {
+      let tempD = new Date(dVal);
+      if (!isNaN(tempD.getTime())) {
+         dtParts = [
+             `${tempD.getFullYear()}-${pad(tempD.getMonth() + 1)}-${pad(tempD.getDate())}`,
+             `${pad(tempD.getHours())}:${pad(tempD.getMinutes())}`
+         ];
+      } else {
+         dtParts = [iso(new Date()), ''];
+      }
+  }
   
   $('#dateInput').value = dtParts[0];
   $('#timeInput').value = dtParts[1] ? dtParts[1].slice(0,5) : '';
@@ -1480,14 +1490,14 @@ $('#exportCsv').addEventListener('click', () => {
   const rows = [['Date', 'Time', 'Type', 'Title', 'Category', 'Payment Method', 'Note', 'Amount', 'Location', 'Currency']];
   sortedTx().forEach(t => { 
     const dVal = String(t.date);
-    rows.push([ dVal.split('T')[0], dVal.split('T')[1] || '', t.type, t.title, findCat(t.type, t.category).name, t.paymentMethod, t.note || '', Number(t.amount).toFixed(2), t.location || '', state.currency ]); 
+    rows.push([ getCleanDateStr(t.date), dVal.split('T')[1] || '', t.type, t.title, findCat(t.type, t.category).name, t.paymentMethod, t.note || '', Number(t.amount).toFixed(2), t.location || '', state.currency ]); 
   });
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\r\n');
   download('\uFEFF' + csv, `det-export-${iso(new Date())}.csv`, 'text/csv;charset=utf-8');
 });
 $('#exportXlsx').addEventListener('click', () => {
   const rows = sortedTx().map(t => ({ 
-    Date: String(t.date).split('T')[0], 
+    Date: getCleanDateStr(t.date), 
     Time: String(t.date).split('T')[1] || '',
     Type: t.type, Title: t.title, Category: findCat(t.type, t.category).name, 'Payment Method': t.paymentMethod, Note: t.note || '', Amount: Number(t.amount), Location: t.location || '', Currency: state.currency 
   }));
@@ -1496,7 +1506,7 @@ $('#exportXlsx').addEventListener('click', () => {
 $('#exportPdf').addEventListener('click', () => {
   const { jsPDF } = window.jspdf; const doc = new jsPDF();
   doc.setFontSize(18); doc.text("Daily Expense Tracker - Report", 14, 22); doc.setFontSize(11); doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 30);
-  const rows = sortedTx().map(t => [ String(t.date).split('T')[0], t.type.toUpperCase(), t.title, findCat(t.type, t.category).name, t.paymentMethod, `${state.currency}${Number(t.amount).toFixed(2)}` ]);
+  const rows = sortedTx().map(t => [ getCleanDateStr(t.date), t.type.toUpperCase(), t.title, findCat(t.type, t.category).name, t.paymentMethod, `${state.currency}${Number(t.amount).toFixed(2)}` ]);
   doc.autoTable({ startY: 40, head: [['Date', 'Type', 'Title', 'Category', 'Method', 'Amount']], body: rows, theme: 'grid', headStyles: { fillColor: [99, 102, 241] }, styles: { fontSize: 9 } });
   doc.save(`det-export-${iso(new Date())}.pdf`);
 });
