@@ -29,7 +29,7 @@
 [data-theme="dark"]{
   --bg:#080c17; --surface:#131a2b; --surface-2:#1a2234; --text:#e8ecf7; --muted:#93a0b8; --border:#232c43;
   --accent-soft:rgba(99,102,241,.16); --shadow:0 4px 24px rgba(0,0,0,.35); --shadow-lg:0 18px 50px rgba(0,0,0,.6);
-  color-scheme: dark;
+  color-scheme: dark; /* Fixes Date Picker Dark Mode */
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
@@ -408,7 +408,7 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
         <div class="grid grid-3" style="grid-template-columns: 1fr;">
           <div class="card balance-card">
             <div class="bc-top">
-              <span>Total Balance (Wallet + Bank)</span>
+              <span>Net Balance (Filtered)</span>
               <span class="bc-chip" id="bcPeriodLabel">Today</span>
             </div>
             <h2 id="balanceValue">₹0.00</h2>
@@ -420,12 +420,12 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
         </div>
         <div class="balances-grid">
           <div class="bal-card">
-            <div class="bal-title" style="color:var(--wallet)"><i class="ph ph-wallet"></i> Wallet Balance</div>
+            <div class="bal-title" style="color:var(--wallet)"><i class="ph ph-wallet"></i> Wallet Balance (All Time)</div>
             <div class="bal-amount" id="dashWallet">₹0.00</div>
             <div class="bal-progress"><div class="bal-progress-bar" id="dashWalletBar" style="width:100%; background:var(--wallet);"></div></div>
           </div>
           <div class="bal-card">
-            <div class="bal-title" style="color:var(--bank)"><i class="ph ph-bank"></i> Bank Balance</div>
+            <div class="bal-title" style="color:var(--bank)"><i class="ph ph-bank"></i> Bank Balance (All Time)</div>
             <div class="bal-amount" id="dashBank">₹0.00</div>
             <div class="bal-progress"><div class="bal-progress-bar" id="dashBankBar" style="width:100%; background:var(--bank);"></div></div>
           </div>
@@ -755,47 +755,122 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
       <button class="copy-btn" onclick="copyScript()">Copy</button>
       <pre id="appsScriptCode">function doPost(e) {
   var lock = LockService.getScriptLock();
-  lock.tryLock(10000);
+  lock.tryLock(10000); 
   try {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
     var data = JSON.parse(e.postData.contents);
     var email = data.email;
     var txs = data.transactions || [];
-    if (sheet.getLastRow() === 0) sheet.appendRow(['ID', 'Date', 'Type', 'Title', 'Category', 'Payment Method', 'Note', 'Amount', 'Location', 'Email']);
+
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(['ID', 'Date', 'Type', 'Title', 'Category', 'Payment Method', 'Note', 'Amount', 'Location', 'Email']);
+    }
+
     var allData = sheet.getDataRange().getValues();
+    var headers = allData[0];
+    var emailIdx = -1, idIdx = -1;
+    for (var i = 0; i < headers.length; i++) {
+      var h = String(headers[i]).trim().toLowerCase();
+      if (h === 'email') emailIdx = i;
+      if (h === 'id') idIdx = i;
+    }
+
+    if (emailIdx === -1 || idIdx === -1) return ContentService.createTextOutput(JSON.stringify({"error": "ID or Email column missing"})).setMimeType(ContentService.MimeType.JSON);
+
     var idToRow = {};
-    for (var i = 1; i < allData.length; i++) { if (allData[i][9] === email) idToRow[allData[i][0]] = i + 1; }
+    for (var i = 1; i < allData.length; i++) {
+      if (allData[i][emailIdx] && String(allData[i][emailIdx]).toLowerCase().trim() === String(email).toLowerCase().trim()) {
+        idToRow[allData[i][idIdx]] = i + 1;
+      }
+    }
+
     var rowsToDelete = [];
+
     txs.forEach(function(t) {
       var row = idToRow[t.id];
       var cleanDate = t.date ? String(t.date).split('T')[0] : ''; 
       var rowData = [t.id, cleanDate, t.type, t.title, t.category, t.paymentMethod, t.note || '', t.amount, t.location || '', email];
-      if (t.deleted) { if (row) rowsToDelete.push(row); } 
-      else { if (row) { sheet.getRange(row, 1, 1, 10).setValues([rowData]); delete idToRow[t.id]; } else { sheet.appendRow(rowData); } }
+
+      if (t.deleted) {
+        if (row) rowsToDelete.push(row);
+      } else {
+        if (row) {
+          sheet.getRange(row, 1, 1, 10).setValues([rowData]); 
+          delete idToRow[t.id]; 
+        } else {
+          sheet.appendRow(rowData);
+        }
+      }
     });
+
     rowsToDelete.sort(function(a, b) { return b - a; });
     rowsToDelete.forEach(function(row) { sheet.deleteRow(row); });
+
     return ContentService.createTextOutput(JSON.stringify({"status": "success"})).setMimeType(ContentService.MimeType.JSON);
-  } catch (error) { return ContentService.createTextOutput(JSON.stringify({"status": "error", "message": error.toString()})).setMimeType(ContentService.MimeType.JSON); } finally { lock.releaseLock(); }
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({"status": "error", "message": error.toString()})).setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
+  }
 }
+
 function doGet(e) {
   try {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
     var email = e.parameter.email;
     if (!email) return ContentService.createTextOutput(JSON.stringify({"transactions": []})).setMimeType(ContentService.MimeType.JSON);
+    
     var allData = sheet.getDataRange().getValues();
     if (allData.length <= 1) return ContentService.createTextOutput(JSON.stringify({"transactions": []})).setMimeType(ContentService.MimeType.JSON);
-    var headers = allData[0]; var emailIdx = headers.indexOf('Email'); if (emailIdx === -1) return ContentService.createTextOutput(JSON.stringify({"transactions": []})).setMimeType(ContentService.MimeType.JSON);
+    
+    var headers = allData[0];
+    var emailIdx = -1, idIdx = -1, dateIdx = -1, typeIdx = -1, titleIdx = -1, catIdx = -1, payIdx = -1, noteIdx = -1, amtIdx = -1, locIdx = -1;
+    
+    for (var i = 0; i < headers.length; i++) {
+      var h = String(headers[i]).trim().toLowerCase();
+      if (h === 'email') emailIdx = i;
+      else if (h === 'id') idIdx = i;
+      else if (h === 'date') dateIdx = i;
+      else if (h === 'type') typeIdx = i;
+      else if (h === 'title') titleIdx = i;
+      else if (h === 'category') catIdx = i;
+      else if (h === 'payment method') payIdx = i;
+      else if (h === 'note') noteIdx = i;
+      else if (h === 'amount') amtIdx = i;
+      else if (h === 'location') locIdx = i;
+    }
+    
+    if (emailIdx === -1) return ContentService.createTextOutput(JSON.stringify({"transactions": [], "error": "Email column missing"})).setMimeType(ContentService.MimeType.JSON);
+
     var txs = [];
     for (var i = 1; i < allData.length; i++) {
-      if (allData[i][emailIdx] === email) {
-        var rawDate = allData[i][1]; var cleanDate = "";
-        try { if (rawDate instanceof Date) { cleanDate = Utilities.formatDate(rawDate, Session.getScriptTimeZone(), "yyyy-MM-dd"); } else if (rawDate) { cleanDate = String(rawDate).split('T')[0]; } } catch (err) { cleanDate = String(rawDate); }
-        txs.push({ id: allData[i][0], date: cleanDate, type: allData[i][2], title: allData[i][3], category: allData[i][4], paymentMethod: allData[i][5], note: allData[i][6] || '', amount: parseFloat(allData[i][7]) || 0, location: allData[i][8] || '' });
+      var row = allData[i];
+      if (row[emailIdx] && String(row[emailIdx]).toLowerCase().trim() === String(email).toLowerCase().trim()) {
+         var rawDate = dateIdx !== -1 ? row[dateIdx] : "";
+         var cleanDate = "";
+         if (rawDate instanceof Date) {
+           cleanDate = Utilities.formatDate(rawDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+         } else if (rawDate) {
+           cleanDate = String(rawDate).split('T')[0];
+         }
+         
+         txs.push({
+           id: idIdx !== -1 && row[idIdx] ? String(row[idIdx]) : "",
+           date: cleanDate,
+           type: typeIdx !== -1 && row[typeIdx] ? String(row[typeIdx]) : "expense",
+           title: titleIdx !== -1 && row[titleIdx] ? String(row[titleIdx]) : "",
+           category: catIdx !== -1 && row[catIdx] ? String(row[catIdx]) : "other-e",
+           paymentMethod: payIdx !== -1 && row[payIdx] ? String(row[payIdx]) : "Cash",
+           note: noteIdx !== -1 && row[noteIdx] ? String(row[noteIdx]) : "",
+           amount: amtIdx !== -1 ? (parseFloat(row[amtIdx]) || 0) : 0,
+           location: locIdx !== -1 && row[locIdx] ? String(row[locIdx]) : ""
+         });
       }
     }
     return ContentService.createTextOutput(JSON.stringify({"transactions": txs})).setMimeType(ContentService.MimeType.JSON);
-  } catch (err) { return ContentService.createTextOutput(JSON.stringify({"error": err.toString()})).setMimeType(ContentService.MimeType.JSON); }
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({"error": err.toString()})).setMimeType(ContentService.MimeType.JSON);
+  }
 }</pre>
     </div>
     <div class="readme-step" style="margin-top:16px;"><div class="readme-num">3</div><div class="readme-text">Click <b>Deploy > New Deployment</b>. Select type: <b>Web App</b>.</div></div>
@@ -907,6 +982,9 @@ function persist() { if(state.email) localStorage.setItem('det_data_' + state.em
 // Unified Sync Logic
 async function syncData() {
   if (!state.googleSheetUrl) return;
+  if (window.location.protocol === 'file:') {
+    return showToast('Cannot sync from local file. Host on web or use localhost.');
+  }
   
   try {
     // 1. Push local data to sheet
@@ -926,14 +1004,15 @@ async function syncData() {
     try {
       data = JSON.parse(text);
     } catch (parseError) {
-      console.error("Server returned non-JSON response:", text);
-      throw new Error("Invalid response from server. Check deployment permissions.");
+      console.error("Server returned non-JSON:", text);
+      throw new Error("Deployment error. Ensure 'Who has access' is 'Anyone'.");
     }
 
     if (data && data.error) throw new Error(data.error);
 
     if (data && data.transactions) {
-      state.transactions = data.transactions;
+      // Filter out any invalid transactions that might break the UI
+      state.transactions = data.transactions.filter(t => t.id && t.date && String(t.date) !== 'Invalid Date');
       persist();
       render();
       showToast('Data synced successfully!');
@@ -997,9 +1076,10 @@ function fmtCompact(n) {
 function initials(name) { return name ? name.trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() : 'U'; }
 
 function dayLabel(dateStr) {
-  if (!dateStr) return 'Unknown Date';
+  if (!dateStr || String(dateStr).trim() === '' || String(dateStr) === 'Invalid Date') return 'Unknown Date';
   const cleanDate = String(dateStr).split('T')[0];
   const d = new Date(cleanDate + 'T00:00:00');
+  if (isNaN(d.getTime())) return 'Unknown Date';
   
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
@@ -1091,7 +1171,6 @@ function txMarkup(t) {
 }
 function escapeHtml(s) { return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-// BUG FIX: Ensure strict date comparison
 function getFilteredTx() {
   const now = new Date(), ym = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`, today = iso(now);
   return state.transactions.filter(t => {
@@ -1109,7 +1188,10 @@ function renderDashboard() {
   const income  = sum(filteredTx.filter(t => t.type === 'income')), expense = sum(filteredTx.filter(t => t.type === 'expense'));
   $('#todayLabel').textContent = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   $('#greetName').textContent = (state.name || 'there').split(' ')[0];
-  $('#balanceValue').textContent = fmt(balances.wallet + balances.bank);
+  
+  // Net balance based on the selected period toggle
+  $('#balanceValue').textContent = fmt(income - expense);
+  
   $('#bcIncome').textContent  = fmt(income); $('#bcExpense').textContent = fmt(expense);
   $('#dashWallet').textContent = fmt(balances.wallet); $('#dashBank').textContent = fmt(balances.bank); $('#dashCredit').textContent = fmt(balances.creditUsed);
   $('#dashCreditBar').style.width = `${Math.min((balances.creditUsed / state.creditLimit) * 100, 100)}%`;
