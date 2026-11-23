@@ -136,19 +136,21 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
 .tx-amt{font-size:14px;font-weight:800;letter-spacing:-.3px;white-space:nowrap}
 .tx-amt.income{color:var(--income)} .tx-amt.expense{color:var(--expense)}
 
+/* FIXED HEIGHTS FOR FILTERS */
 .toolbar{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
-.chips{display:flex;gap:7px;background:var(--surface);border:1px solid var(--border);padding:5px;border-radius:14px}
-.chip{padding:8px 15px;border-radius:10px;font-size:12.5px;font-weight:700;color:var(--muted);transition:.16s;}
+.chips{display:flex;gap:7px;background:var(--surface);border:1px solid var(--border);padding:5px;border-radius:14px; height: 46px;}
+.chip{padding:8px 15px;border-radius:10px;font-size:12.5px;font-weight:700;color:var(--muted);transition:.16s; display: flex; align-items: center;}
 .chip.active{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;box-shadow:0 6px 14px rgba(99,102,241,.3)}
-.search{flex:1;min-width:180px;display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:0 14px;height:46px;}
+
+.search{flex:1;min-width:200px;display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:0 14px; height: 46px; box-sizing: border-box;}
 .search svg{width:17px;height:17px;color:var(--muted);flex:none}
-.search input{flex:1;border:none;outline:none;background:transparent;font-size:13.5px;font-weight:500;min-width:0}
+.search input{flex:1;border:none;outline:none;background:transparent;font-size:13.5px;font-weight:500;min-width:0; height: 100%;}
 .search input::placeholder{color:var(--muted)}
 
 .filter-group { display: flex; gap: 8px; flex-wrap: wrap; }
-.date-filter, .pay-filter { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 0 14px; height: 46px; color: var(--text); }
-.date-filter input { border: none; outline: none; background: transparent; font-size: 12px; font-weight: 600; color: var(--text); }
-.pay-filter select { border: none; outline: none; background: transparent; font-size: 12px; font-weight: 600; color: var(--text); cursor: pointer; }
+.date-filter, .pay-filter { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 0 14px; height: 46px; color: var(--text); box-sizing: border-box;}
+.date-filter input { border: none; outline: none; background: transparent; font-size: 12px; font-weight: 600; color: var(--text); height: 100%;}
+.pay-filter select { border: none; outline: none; background: transparent; font-size: 12px; font-weight: 600; color: var(--text); cursor: pointer; height: 100%;}
 .date-filter span { color: var(--muted); font-size: 12px; font-weight: 600; }
 
 .history-summary { background: var(--surface-2); padding: 16px; border-radius: 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border); }
@@ -505,7 +507,7 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
               <input type="date" id="startDateFilter" title="Start Date">
               <span>to</span>
               <input type="date" id="endDateFilter" title="End Date">
-              <button class="ghost-btn" onclick="clearDateFilter()" style="padding:4px 8px; font-size:10px;">Clear</button>
+              <button class="ghost-btn" onclick="clearDateFilter()" style="padding:4px 8px; font-size:10px; height: 100%;">Clear</button>
             </div>
           </div>
         </div>
@@ -766,7 +768,7 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
     var rowsToDelete = [];
     txs.forEach(function(t) {
       var row = idToRow[t.id];
-      var cleanDate = t.date.split('T')[0]; 
+      var cleanDate = t.date ? String(t.date).split('T')[0] : ''; 
       var rowData = [t.id, cleanDate, t.type, t.title, t.category, t.paymentMethod, t.note || '', t.amount, t.location || '', email];
       if (t.deleted) { if (row) rowsToDelete.push(row); } 
       else { if (row) { sheet.getRange(row, 1, 1, 10).setValues([rowData]); delete idToRow[t.id]; } else { sheet.appendRow(rowData); } }
@@ -777,20 +779,23 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
   } catch (error) { return ContentService.createTextOutput(JSON.stringify({"status": "error", "message": error.toString()})).setMimeType(ContentService.MimeType.JSON); } finally { lock.releaseLock(); }
 }
 function doGet(e) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  var email = e.parameter.email;
-  if (!email) return ContentService.createTextOutput(JSON.stringify({"transactions": []})).setMimeType(ContentService.MimeType.JSON);
-  var allData = sheet.getDataRange().getValues();
-  if (allData.length <= 1) return ContentService.createTextOutput(JSON.stringify({"transactions": []})).setMimeType(ContentService.MimeType.JSON);
-  var headers = allData[0]; var emailIdx = headers.indexOf('Email'); var txs = [];
-  for (var i = 1; i < allData.length; i++) {
-    if (allData[i][emailIdx] === email) {
-      var rawDate = allData[i][1];
-      var cleanDate = rawDate instanceof Date ? Utilities.formatDate(rawDate, Session.getScriptTimeZone(), "yyyy-MM-dd") : rawDate.split('T')[0];
-      txs.push({ id: allData[i][0], date: cleanDate, type: allData[i][2], title: allData[i][3], category: allData[i][4], paymentMethod: allData[i][5], note: allData[i][6], amount: parseFloat(allData[i][7]), location: allData[i][8] || '' });
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var email = e.parameter.email;
+    if (!email) return ContentService.createTextOutput(JSON.stringify({"transactions": []})).setMimeType(ContentService.MimeType.JSON);
+    var allData = sheet.getDataRange().getValues();
+    if (allData.length <= 1) return ContentService.createTextOutput(JSON.stringify({"transactions": []})).setMimeType(ContentService.MimeType.JSON);
+    var headers = allData[0]; var emailIdx = headers.indexOf('Email'); if (emailIdx === -1) return ContentService.createTextOutput(JSON.stringify({"transactions": []})).setMimeType(ContentService.MimeType.JSON);
+    var txs = [];
+    for (var i = 1; i < allData.length; i++) {
+      if (allData[i][emailIdx] === email) {
+        var rawDate = allData[i][1]; var cleanDate = "";
+        try { if (rawDate instanceof Date) { cleanDate = Utilities.formatDate(rawDate, Session.getScriptTimeZone(), "yyyy-MM-dd"); } else if (rawDate) { cleanDate = String(rawDate).split('T')[0]; } } catch (err) { cleanDate = String(rawDate); }
+        txs.push({ id: allData[i][0], date: cleanDate, type: allData[i][2], title: allData[i][3], category: allData[i][4], paymentMethod: allData[i][5], note: allData[i][6] || '', amount: parseFloat(allData[i][7]) || 0, location: allData[i][8] || '' });
+      }
     }
-  }
-  return ContentService.createTextOutput(JSON.stringify({"transactions": txs})).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({"transactions": txs})).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) { return ContentService.createTextOutput(JSON.stringify({"error": err.toString()})).setMimeType(ContentService.MimeType.JSON); }
 }</pre>
     </div>
     <div class="readme-step" style="margin-top:16px;"><div class="readme-num">3</div><div class="readme-text">Click <b>Deploy > New Deployment</b>. Select type: <b>Web App</b>.</div></div>
@@ -904,23 +909,39 @@ async function syncData() {
   if (!state.googleSheetUrl) return;
   
   try {
+    // 1. Push local data to sheet
     await fetch(state.googleSheetUrl, {
       method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'sync', email: state.email, transactions: state.transactions })
     });
     
-    await new Promise(r => setTimeout(r, 1500));
+    // 2. Wait for script to process
+    await new Promise(r => setTimeout(r, 2000));
     
-    const res = await fetch(`${state.googleSheetUrl}?email=${encodeURIComponent(state.email)}`);
-    const data = await res.json();
+    // 3. Pull from sheet with cache buster
+    const res = await fetch(`${state.googleSheetUrl}?email=${encodeURIComponent(state.email)}&t=${Date.now()}`);
+    const text = await res.text();
     
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseError) {
+      console.error("Server returned non-JSON response:", text);
+      throw new Error("Invalid response from server. Check deployment permissions.");
+    }
+
+    if (data && data.error) throw new Error(data.error);
+
     if (data && data.transactions) {
       state.transactions = data.transactions;
       persist();
       render();
       showToast('Data synced successfully!');
     }
-  } catch(e) { console.log('Sync failed', e); showToast('Sync failed. Check connection.'); }
+  } catch(e) { 
+    console.log('Sync failed', e); 
+    showToast('Sync failed: ' + e.message); 
+  }
 }
 
 // Auto-sync every 1 hour
@@ -977,7 +998,7 @@ function initials(name) { return name ? name.trim().split(/\s+/).slice(0, 2).map
 
 function dayLabel(dateStr) {
   if (!dateStr) return 'Unknown Date';
-  const cleanDate = dateStr.split('T')[0];
+  const cleanDate = String(dateStr).split('T')[0];
   const d = new Date(cleanDate + 'T00:00:00');
   
   const today = new Date();
@@ -1016,14 +1037,14 @@ function renderDynamicBarChart(el) {
     for (let i = 6; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i); labels.push(d.toLocaleDateString('en-US', { weekday: 'short' }));
       const dStr = iso(d);
-      incomeData.push(sum(state.transactions.filter(t => !t.deleted && t.date === dStr && t.type === 'income')));
-      expenseData.push(sum(state.transactions.filter(t => !t.deleted && t.date === dStr && t.type === 'expense')));
+      incomeData.push(sum(state.transactions.filter(t => !t.deleted && String(t.date).split('T')[0] === dStr && t.type === 'income')));
+      expenseData.push(sum(state.transactions.filter(t => !t.deleted && String(t.date).split('T')[0] === dStr && t.type === 'expense')));
     }
   } else if (state.dashboardPeriod === 'month') {
     title = "Weekly Breakdown"; labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4', 'Week 5'];
     incomeData = [0,0,0,0,0]; expenseData = [0,0,0,0,0];
     const ym = `${today.getFullYear()}-${pad(today.getMonth() + 1)}`;
-    state.transactions.filter(t => !t.deleted && t.date.startsWith(ym)).forEach(t => {
+    state.transactions.filter(t => !t.deleted && String(t.date).startsWith(ym)).forEach(t => {
       const weekIdx = Math.min(Math.floor((parseInt(t.date.split('-')[2]) - 1) / 7), 4);
       if (t.type === 'income') incomeData[weekIdx] += Number(t.amount); else expenseData[weekIdx] += Number(t.amount);
     });
@@ -1033,8 +1054,8 @@ function renderDynamicBarChart(el) {
     for (let i = 5; i >= 0; i--) {
       const d = new Date(today.getFullYear(), today.getMonth() - i, 1); labels.push(months[d.getMonth()]);
       const ym = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-      incomeData.push(sum(state.transactions.filter(t => !t.deleted && t.date.startsWith(ym) && t.type === 'income')));
-      expenseData.push(sum(state.transactions.filter(t => !t.deleted && t.date.startsWith(ym) && t.type === 'expense')));
+      incomeData.push(sum(state.transactions.filter(t => !t.deleted && String(t.date).startsWith(ym) && t.type === 'income')));
+      expenseData.push(sum(state.transactions.filter(t => !t.deleted && String(t.date).startsWith(ym) && t.type === 'expense')));
     }
   }
   $('#barChartTitle').textContent = title;
@@ -1069,15 +1090,19 @@ function txMarkup(t) {
     </li>`;
 }
 function escapeHtml(s) { return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// BUG FIX: Ensure strict date comparison
 function getFilteredTx() {
   const now = new Date(), ym = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`, today = iso(now);
   return state.transactions.filter(t => {
     if (t.deleted) return false;
-    if (state.dashboardPeriod === 'today') return t.date === today;
-    if (state.dashboardPeriod === 'month') return t.date.startsWith(ym);
+    const tDate = t.date ? String(t.date).split('T')[0] : '';
+    if (state.dashboardPeriod === 'today') return tDate === today;
+    if (state.dashboardPeriod === 'month') return tDate.startsWith(ym);
     return true;
   });
 }
+
 function renderDashboard() {
   const now = new Date(), filteredTx = getFilteredTx(), balances = calculateBalances();
   $('#bcPeriodLabel').textContent = state.dashboardPeriod === 'today' ? 'Today' : (state.dashboardPeriod === 'month' ? 'This Month' : 'All Time');
@@ -1101,7 +1126,14 @@ function renderDashboard() {
   const recent = sortedTx().slice(0, 5);
   $('#recentList').innerHTML = recent.length ? recent.map(t => txMarkup(t, false)).join('') : `<li class="empty-state"><div class="es-emoji">🧾</div><h4>No transactions yet</h4><p>Tap “Add” to record your first income or expense.</p></li>`;
 }
-function sortedTx() { return [...state.transactions].filter(t => !t.deleted).sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0)); }
+
+function sortedTx() { 
+  return [...state.transactions].filter(t => !t.deleted).sort((a, b) => {
+    const dateA = a.date ? String(a.date).split('T')[0] : '';
+    const dateB = b.date ? String(b.date).split('T')[0] : '';
+    return dateB.localeCompare(dateA) || (b.createdAt || 0) - (a.createdAt || 0);
+  }); 
+}
 
 function renderHistory() {
   const filter = $('#filterChips .chip.active')?.dataset.filter || 'all';
@@ -1112,13 +1144,11 @@ function renderHistory() {
   
   let txs = sortedTx();
   
-  // Apply Filters
   if (filter !== 'all') txs = txs.filter(t => t.type === filter);
   if (payFilter !== 'all') txs = txs.filter(t => t.paymentMethod === payFilter);
-  if (startDate) txs = txs.filter(t => t.date >= startDate);
-  if (endDate) txs = txs.filter(t => t.date <= endDate);
+  if (startDate) txs = txs.filter(t => String(t.date).split('T')[0] >= startDate);
+  if (endDate) txs = txs.filter(t => String(t.date).split('T')[0] <= endDate);
   
-  // Apply Search
   if (q) {
     txs = txs.filter(t => { 
       const c = findCat(t.type, t.category); 
@@ -1126,7 +1156,6 @@ function renderHistory() {
     });
   }
 
-  // Update Summary
   const summaryBox = $('#historySummary');
   const totalDisplay = $('#historyTotal');
   if (filter !== 'all' || q !== '' || startDate !== '' || endDate !== '' || payFilter !== 'all') {
@@ -1148,7 +1177,7 @@ function renderHistory() {
   
   const groups = new Map();
   txs.forEach(t => { 
-    const d = t.date.split('T')[0]; // Ensure clean date grouping
+    const d = String(t.date).split('T')[0]; 
     if (!groups.has(d)) groups.set(d, []); 
     groups.get(d).push(t); 
   });
@@ -1210,7 +1239,7 @@ function setType(type) {
 }
 function openModal(type = 'expense', tx = null) {
   editingId = tx ? tx.id : null; modalType = tx ? tx.type : type; selectedCat = tx ? tx.category : CATEGORIES[modalType][0].id; selectedPay = tx ? (tx.paymentMethod || 'Cash') : 'Cash';
-  $('#titleInput').value = tx ? (tx.title || '') : ''; $('#amountInput').value = tx ? tx.amount : ''; $('#noteInput').value = tx ? (tx.note || '') : ''; $('#dateInput').value = tx ? tx.date.split('T')[0] : iso(new Date());
+  $('#titleInput').value = tx ? (tx.title || '') : ''; $('#amountInput').value = tx ? tx.amount : ''; $('#noteInput').value = tx ? (tx.note || '') : ''; $('#dateInput').value = tx ? String(tx.date).split('T')[0] : iso(new Date());
   $('#locationInput').value = tx ? (tx.location || '') : '';
   $('#curSymbol').textContent = state.currency; $('#sheetTitle').textContent = tx ? 'Edit Transaction' : 'Add Transaction'; $('#saveTx').textContent = tx ? 'Update Transaction' : 'Save Transaction';
   setType(modalType); renderPayMethods(); $('#modal').classList.add('open'); document.body.style.overflow = 'hidden'; setTimeout(() => $('#amountInput').focus(), 260);
@@ -1221,7 +1250,6 @@ $('#typeToggle').addEventListener('click', e => { const btn = e.target.closest('
 $('#catGrid').addEventListener('click', e => { const btn = e.target.closest('.cat-item'); if (!btn) return; selectedCat = btn.dataset.cat; renderCatGrid(); });
 $('#payMethods').addEventListener('click', e => { const btn = e.target.closest('.pay-item'); if (!btn) return; selectedPay = btn.dataset.pay; renderPayMethods(); });
 
-// Get Location Feature
 $('#getLocationBtn').addEventListener('click', () => {
   if (navigator.geolocation) {
     $('#getLocationBtn').innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
@@ -1324,18 +1352,18 @@ $('#importJson').addEventListener('change', (e) => {
 });
 $('#exportCsv').addEventListener('click', () => {
   const rows = [['Date', 'Type', 'Title', 'Category', 'Payment Method', 'Note', 'Amount', 'Location', 'Currency']];
-  sortedTx().forEach(t => { rows.push([ t.date, t.type, t.title, findCat(t.type, t.category).name, t.paymentMethod, t.note || '', Number(t.amount).toFixed(2), t.location || '', state.currency ]); });
+  sortedTx().forEach(t => { rows.push([ String(t.date).split('T')[0], t.type, t.title, findCat(t.type, t.category).name, t.paymentMethod, t.note || '', Number(t.amount).toFixed(2), t.location || '', state.currency ]); });
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\r\n');
   download('\uFEFF' + csv, `det-export-${iso(new Date())}.csv`, 'text/csv;charset=utf-8');
 });
 $('#exportXlsx').addEventListener('click', () => {
-  const rows = sortedTx().map(t => ({ Date: t.date, Type: t.type, Title: t.title, Category: findCat(t.type, t.category).name, 'Payment Method': t.paymentMethod, Note: t.note || '', Amount: Number(t.amount), Location: t.location || '', Currency: state.currency }));
+  const rows = sortedTx().map(t => ({ Date: String(t.date).split('T')[0], Type: t.type, Title: t.title, Category: findCat(t.type, t.category).name, 'Payment Method': t.paymentMethod, Note: t.note || '', Amount: Number(t.amount), Location: t.location || '', Currency: state.currency }));
   const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Transactions"); XLSX.writeFile(wb, `det-export-${iso(new Date())}.xlsx`);
 });
 $('#exportPdf').addEventListener('click', () => {
   const { jsPDF } = window.jspdf; const doc = new jsPDF();
   doc.setFontSize(18); doc.text("Daily Expense Tracker - Report", 14, 22); doc.setFontSize(11); doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 30);
-  const rows = sortedTx().map(t => [ t.date, t.type.toUpperCase(), t.title, findCat(t.type, t.category).name, t.paymentMethod, `${state.currency}${Number(t.amount).toFixed(2)}` ]);
+  const rows = sortedTx().map(t => [ String(t.date).split('T')[0], t.type.toUpperCase(), t.title, findCat(t.type, t.category).name, t.paymentMethod, `${state.currency}${Number(t.amount).toFixed(2)}` ]);
   doc.autoTable({ startY: 40, head: [['Date', 'Type', 'Title', 'Category', 'Method', 'Amount']], body: rows, theme: 'grid', headStyles: { fillColor: [99, 102, 241] }, styles: { fontSize: 9 } });
   doc.save(`det-export-${iso(new Date())}.pdf`);
 });
