@@ -39,9 +39,10 @@ function doPost(e) {
 
     txs.forEach(function(t) {
       var row = idToRow[t.id];
-      var cleanDate = t.date ? String(t.date).trim() : ''; 
       
-      // Force Google Sheets to keep it as plain text so it doesn't auto-format with GMT timezones
+      // STRICT DATE: Force YYYY-MM-DD and prefix with ' so Sheets keeps it as text
+      var rawDate = t.date ? String(t.date).trim() : '';
+      var cleanDate = rawDate.split('T')[0]; 
       var sheetDate = cleanDate ? "'" + cleanDate : "";
       
       var rowData = [t.id, sheetDate, t.type, t.title, t.category, t.paymentMethod, t.note || '', t.amount, t.location || '', email];
@@ -101,17 +102,31 @@ function doGet(e) {
     for (var i = 1; i < allData.length; i++) {
       var row = allData[i];
       if (row[emailIdx] && String(row[emailIdx]).toLowerCase().trim() === String(email).toLowerCase().trim()) {
+         
          var rawDate = dateIdx !== -1 ? row[dateIdx] : "";
          var cleanDate = "";
          
          if (rawDate) {
-           var parsedDate = new Date(rawDate);
-           if (!isNaN(parsedDate.getTime())) {
-             // Output strictly in local ISO format (YYYY-MM-DDTHH:mm:ss) so frontend parses it perfectly
-             cleanDate = Utilities.formatDate(parsedDate, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss");
-           } else {
-             cleanDate = String(rawDate); // Fallback
-           }
+             if (rawDate instanceof Date) {
+                 // If Sheets converted it to a Date object, format it
+                 cleanDate = Utilities.formatDate(rawDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+             } else {
+                 var str = String(rawDate).trim();
+                 // If it has 'T' (ISO format), split it
+                 if (str.includes('T')) {
+                     cleanDate = str.split('T')[0];
+                 } else if (str.length > 10 && str.includes('GMT')) {
+                     // If it's the long "Mon Nov 19 2026 00:00:00 GMT+0530" string, parse it
+                     var parsed = new Date(str);
+                     if (!isNaN(parsed.getTime())) {
+                         cleanDate = Utilities.formatDate(parsed, Session.getScriptTimeZone(), "yyyy-MM-dd");
+                     } else {
+                         cleanDate = str; 
+                     }
+                 } else {
+                     cleanDate = str;
+                 }
+             }
          }
          
          txs.push({
@@ -132,6 +147,7 @@ function doGet(e) {
     return ContentService.createTextOutput(JSON.stringify({"error": err.toString()})).setMimeType(ContentService.MimeType.JSON);
   }
 }
+
 
 3. Click Deploy > New Deployment. Select type: Web App.
 4. Set "Execute as" to Me and "Who has access" to Anyone. Click Deploy.
