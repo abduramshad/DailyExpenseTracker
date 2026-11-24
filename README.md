@@ -40,21 +40,22 @@ function doPost(e) {
     txs.forEach(function(t) {
       var row = idToRow[t.id];
       
-      // STRICT DATE: Force YYYY-MM-DD and prefix with ' so Sheets keeps it as text
+      // STRICT DATE: Ensure it's exactly 10 characters (YYYY-MM-DD)
       var rawDate = t.date ? String(t.date).trim() : '';
-      var cleanDate = rawDate.split('T')[0]; 
-      var sheetDate = cleanDate ? "'" + cleanDate : "";
+      var cleanDate = rawDate.substring(0, 10); 
       
-      var rowData = [t.id, sheetDate, t.type, t.title, t.category, t.paymentMethod, t.note || '', t.amount, t.location || '', email];
+      var rowData = [t.id, cleanDate, t.type, t.title, t.category, t.paymentMethod, t.note || '', t.amount, t.location || '', email];
 
       if (t.deleted) {
         if (row) rowsToDelete.push(row);
       } else {
         if (row) {
           sheet.getRange(row, 1, 1, 10).setValues([rowData]); 
+          sheet.getRange(row, 2).setNumberFormat('@'); // FORCE PLAIN TEXT on update
           delete idToRow[t.id]; 
         } else {
           sheet.appendRow(rowData);
+          sheet.getRange(sheet.getLastRow(), 2).setNumberFormat('@'); // FORCE PLAIN TEXT on insert
         }
       }
     });
@@ -108,23 +109,17 @@ function doGet(e) {
          
          if (rawDate) {
              if (rawDate instanceof Date) {
-                 // If Sheets converted it to a Date object, format it
+                 // If Sheets already corrupted it into a Date object
                  cleanDate = Utilities.formatDate(rawDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
              } else {
+                 // Force it to be exactly YYYY-MM-DD
                  var str = String(rawDate).trim();
-                 // If it has 'T' (ISO format), split it
-                 if (str.includes('T')) {
-                     cleanDate = str.split('T')[0];
-                 } else if (str.length > 10 && str.includes('GMT')) {
-                     // If it's the long "Mon Nov 19 2026 00:00:00 GMT+0530" string, parse it
+                 cleanDate = str.substring(0, 10); 
+                 if (cleanDate.length < 10 || cleanDate.includes(' ')) {
                      var parsed = new Date(str);
                      if (!isNaN(parsed.getTime())) {
                          cleanDate = Utilities.formatDate(parsed, Session.getScriptTimeZone(), "yyyy-MM-dd");
-                     } else {
-                         cleanDate = str; 
                      }
-                 } else {
-                     cleanDate = str;
                  }
              }
          }
