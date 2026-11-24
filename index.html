@@ -754,7 +754,9 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
     <div class="readme-step"><div class="readme-num">2</div><div class="readme-text">Delete any existing code, paste the script below, and click <b>Save</b>.</div></div>
     <div class="code-block">
       <button class="copy-btn" onclick="copyScript()">Copy</button>
-      <pre id="appsScriptCode">function doPost(e) {
+      <pre id="appsScriptCode">
+        
+            function doPost(e) {
   var lock = LockService.getScriptLock();
   lock.tryLock(10000); 
   try {
@@ -790,6 +792,7 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
     txs.forEach(function(t) {
       var row = idToRow[t.id];
       
+      // STRICT DATE: Ensure it's exactly 10 characters (YYYY-MM-DD)
       var rawDate = t.date ? String(t.date).trim() : '';
       var cleanDate = rawDate.substring(0, 10); 
       
@@ -800,11 +803,11 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
       } else {
         if (row) {
           sheet.getRange(row, 1, 1, 10).setValues([rowData]); 
-          sheet.getRange(row, 2).setNumberFormat('@'); 
+          sheet.getRange(row, 2).setNumberFormat('@'); // FORCE PLAIN TEXT on update
           delete idToRow[t.id]; 
         } else {
           sheet.appendRow(rowData);
-          sheet.getRange(sheet.getLastRow(), 2).setNumberFormat('@'); 
+          sheet.getRange(sheet.getLastRow(), 2).setNumberFormat('@'); // FORCE PLAIN TEXT on insert
         }
       }
     });
@@ -858,8 +861,10 @@ function doGet(e) {
          
          if (rawDate) {
              if (rawDate instanceof Date) {
+                 // If Sheets already corrupted it into a Date object
                  cleanDate = Utilities.formatDate(rawDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
              } else {
+                 // Force it to be exactly YYYY-MM-DD
                  var str = String(rawDate).trim();
                  cleanDate = str.substring(0, 10); 
                  if (cleanDate.length < 10 || cleanDate.includes(' ')) {
@@ -888,7 +893,9 @@ function doGet(e) {
   } catch (err) {
     return ContentService.createTextOutput(JSON.stringify({"error": err.toString()})).setMimeType(ContentService.MimeType.JSON);
   }
-}</pre>
+}     
+                 
+      </pre>
     </div>
     <div class="readme-step" style="margin-top:16px;"><div class="readme-num">3</div><div class="readme-text">Click <b>Deploy > New Deployment</b>. Select type: <b>Web App</b>.</div></div>
     <div class="readme-step"><div class="readme-num">4</div><div class="readme-text">Set "Execute as" to <b>Me</b> and "Who has access" to <b>Anyone</b>. Click Deploy.</div></div>
