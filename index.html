@@ -222,8 +222,8 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
 .cat-name{font-size:9.5px;font-weight:700;color:var(--muted);text-align:center;line-height:1.2} .cat-item.selected .cat-name{color:var(--accent)}
 
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px} .row2 .field{margin-bottom:18px}
-.field input[type=date],.field input[type=time],.field input[type=text], .field select{width:100%;background:var(--surface-2);border:2px solid var(--border);border-radius:13px;padding:12px 14px;font-size:13.5px;font-weight:600;outline:none;transition:.18s;appearance: none;-webkit-appearance: none; color: var(--text);}
-.field input[type=date]:focus,.field input[type=time]:focus,.field input[type=text]:focus, .field select:focus{border-color:var(--accent);background:var(--surface)}
+.field input[type=date],.field input[type=text], .field select{width:100%;background:var(--surface-2);border:2px solid var(--border);border-radius:13px;padding:12px 14px;font-size:13.5px;font-weight:600;outline:none;transition:.18s;appearance: none;-webkit-appearance: none; color: var(--text);}
+.field input[type=date]:focus,.field input[type=text]:focus, .field select:focus{border-color:var(--accent);background:var(--surface)}
 
 .location-input { display: flex; gap: 8px; }
 .location-input input { flex: 1; }
@@ -694,15 +694,10 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
         <input type="date" id="dateInput">
       </label>
       <label class="field">
-        <span>Time</span>
-        <input type="time" id="timeInput">
+        <span>Note</span>
+        <input type="text" id="noteInput" placeholder="Optional">
       </label>
     </div>
-    
-    <label class="field">
-      <span>Note</span>
-      <input type="text" id="noteInput" placeholder="Optional">
-    </label>
 
     <button class="btn-primary" id="saveTx">Save Transaction</button>
   </div>
@@ -794,8 +789,11 @@ ul{list-style:none} svg{display:block} i.ph { display: flex; align-items: center
 
     txs.forEach(function(t) {
       var row = idToRow[t.id];
-      var cleanDate = t.date ? String(t.date).trim() : ''; 
+      
+      var rawDate = t.date ? String(t.date).trim() : '';
+      var cleanDate = rawDate.split('T')[0]; 
       var sheetDate = cleanDate ? "'" + cleanDate : "";
+      
       var rowData = [t.id, sheetDate, t.type, t.title, t.category, t.paymentMethod, t.note || '', t.amount, t.location || '', email];
 
       if (t.deleted) {
@@ -853,16 +851,28 @@ function doGet(e) {
     for (var i = 1; i < allData.length; i++) {
       var row = allData[i];
       if (row[emailIdx] && String(row[emailIdx]).toLowerCase().trim() === String(email).toLowerCase().trim()) {
+         
          var rawDate = dateIdx !== -1 ? row[dateIdx] : "";
          var cleanDate = "";
          
          if (rawDate) {
-           var parsedDate = new Date(rawDate);
-           if (!isNaN(parsedDate.getTime())) {
-             cleanDate = Utilities.formatDate(parsedDate, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss");
-           } else {
-             cleanDate = String(rawDate);
-           }
+             if (rawDate instanceof Date) {
+                 cleanDate = Utilities.formatDate(rawDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+             } else {
+                 var str = String(rawDate).trim();
+                 if (str.includes('T')) {
+                     cleanDate = str.split('T')[0];
+                 } else if (str.length > 10 && str.includes('GMT')) {
+                     var parsed = new Date(str);
+                     if (!isNaN(parsed.getTime())) {
+                         cleanDate = Utilities.formatDate(parsed, Session.getScriptTimeZone(), "yyyy-MM-dd");
+                     } else {
+                         cleanDate = str; 
+                     }
+                 } else {
+                     cleanDate = str;
+                 }
+             }
          }
          
          txs.push({
@@ -1019,7 +1029,7 @@ async function syncData() {
     if (data && data.error) throw new Error(data.error);
 
     if (data && data.transactions) {
-      state.transactions = data.transactions.filter(t => t.id && t.date && String(t.date) !== 'Invalid Date' && String(t.date).toLowerCase() !== 'undefined');
+      state.transactions = data.transactions.filter(t => t.id && t.date);
       persist();
       render();
       showToast('Data synced successfully!');
@@ -1082,43 +1092,33 @@ function fmtCompact(n) {
 }
 function initials(name) { return name ? name.trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() : 'U'; }
 
-// NEW ROBUST DATE FUNCTIONS
+// STRICT DATE PARSING
 function getCleanDateStr(dateStr) {
-  if (!dateStr) return '';
-  let d = new Date(dateStr);
-  if (isNaN(d.getTime())) return '';
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  if (!dateStr) return "";
+  var str = String(dateStr).trim();
+  // If it contains 'T' (like 2026-11-19T00:00:00), just take the first 10 chars
+  if (str.includes('T')) return str.split('T')[0];
+  return str;
 }
 
 function dayLabel(dateStr) {
-  if (!dateStr) return 'Unknown Date';
-  let d = new Date(dateStr);
+  var cleanDate = getCleanDateStr(dateStr);
+  if (!cleanDate || cleanDate === 'undefined' || cleanDate === 'Invalid Date') return 'Unknown Date';
+  
+  var d = new Date(cleanDate + 'T00:00:00');
   if (isNaN(d.getTime())) return 'Unknown Date';
-
-  const cleanDate = getCleanDateStr(dateStr);
+  
   const today = new Date();
-  const todayStr = getCleanDateStr(today.toISOString());
+  const todayStr = iso(today);
   const y = new Date(today); y.setDate(y.getDate() - 1);
-  const yStr = getCleanDateStr(y.toISOString());
-
-  let dateText = '';
-  if (cleanDate === todayStr) dateText = 'Today';
-  else if (cleanDate === yStr) dateText = 'Yesterday';
-  else {
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    dateText = `${days[d.getDay()]}, ${pad(d.getDate())}-${months[d.getMonth()]}-${d.getFullYear()}`;
-  }
-
-  const hours = d.getHours();
-  const minutes = d.getMinutes();
-  if (hours !== 0 || minutes !== 0) {
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    const h12 = hours % 12 || 12;
-    return `${dateText} at ${h12}:${pad(minutes)} ${ampm}`;
-  }
-
-  return dateText;
+  const yStr = iso(y);
+  
+  if (cleanDate === todayStr) return 'Today';
+  if (cleanDate === yStr) return 'Yesterday';
+  
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${days[d.getDay()]}, ${pad(d.getDate())}-${months[d.getMonth()]}-${d.getFullYear()}`;
 }
 
 function renderDonut(el, segments, total, type) {
@@ -1151,7 +1151,7 @@ function renderDynamicBarChart(el) {
     title = "Weekly Breakdown"; labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4', 'Week 5'];
     incomeData = [0,0,0,0,0]; expenseData = [0,0,0,0,0];
     const ym = `${today.getFullYear()}-${pad(today.getMonth() + 1)}`;
-    state.transactions.filter(t => !t.deleted && String(t.date).startsWith(ym)).forEach(t => {
+    state.transactions.filter(t => !t.deleted && getCleanDateStr(t.date).startsWith(ym)).forEach(t => {
       const weekIdx = Math.min(Math.floor((parseInt(getCleanDateStr(t.date).split('-')[2]) - 1) / 7), 4);
       if (weekIdx >= 0 && weekIdx < 5) {
         if (t.type === 'income') incomeData[weekIdx] += Number(t.amount); else expenseData[weekIdx] += Number(t.amount);
@@ -1163,8 +1163,8 @@ function renderDynamicBarChart(el) {
     for (let i = 5; i >= 0; i--) {
       const d = new Date(today.getFullYear(), today.getMonth() - i, 1); labels.push(months[d.getMonth()]);
       const ym = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-      incomeData.push(sum(state.transactions.filter(t => !t.deleted && String(t.date).startsWith(ym) && t.type === 'income')));
-      expenseData.push(sum(state.transactions.filter(t => !t.deleted && String(t.date).startsWith(ym) && t.type === 'expense')));
+      incomeData.push(sum(state.transactions.filter(t => !t.deleted && getCleanDateStr(t.date).startsWith(ym) && t.type === 'income')));
+      expenseData.push(sum(state.transactions.filter(t => !t.deleted && getCleanDateStr(t.date).startsWith(ym) && t.type === 'expense')));
     }
   }
   $('#barChartTitle').textContent = title;
@@ -1287,11 +1287,9 @@ function renderHistory() {
   
   const groups = new Map();
   txs.forEach(t => { 
-    const d = getCleanDateStr(t.date); 
-    if (d) {
-      if (!groups.has(d)) groups.set(d, []); 
-      groups.get(d).push(t); 
-    }
+    const d = getCleanDateStr(t.date) || 'Unknown Date'; 
+    if (!groups.has(d)) groups.set(d, []); 
+    groups.get(d).push(t); 
   });
   
   box.innerHTML = [...groups.entries()].map(([date, items]) => {
@@ -1352,23 +1350,7 @@ function setType(type) {
 function openModal(type = 'expense', tx = null) {
   editingId = tx ? tx.id : null; modalType = tx ? tx.type : type; selectedCat = tx ? tx.category : CATEGORIES[modalType][0].id; selectedPay = tx ? (tx.paymentMethod || 'Cash') : 'Cash';
   
-  const dVal = tx && tx.date ? String(tx.date) : iso(new Date());
-  let dtParts = dVal.split('T');
-  
-  if (dtParts.length === 1) {
-      let tempD = new Date(dVal);
-      if (!isNaN(tempD.getTime())) {
-         dtParts = [
-             `${tempD.getFullYear()}-${pad(tempD.getMonth() + 1)}-${pad(tempD.getDate())}`,
-             `${pad(tempD.getHours())}:${pad(tempD.getMinutes())}`
-         ];
-      } else {
-         dtParts = [iso(new Date()), ''];
-      }
-  }
-  
-  $('#dateInput').value = dtParts[0];
-  $('#timeInput').value = dtParts[1] ? dtParts[1].slice(0,5) : '';
+  $('#dateInput').value = tx && tx.date ? getCleanDateStr(tx.date) : iso(new Date());
   
   $('#titleInput').value = tx ? (tx.title || '') : ''; $('#amountInput').value = tx ? tx.amount : ''; $('#noteInput').value = tx ? (tx.note || '') : ''; 
   $('#locationInput').value = tx ? (tx.location || '') : '';
@@ -1407,10 +1389,7 @@ $('#saveTx').addEventListener('click', () => {
   if (!amount || amount <= 0) { const w = $('#amountWrap'); w.classList.add('shake'); setTimeout(() => w.classList.remove('shake'), 400); $('#amountInput').focus(); return; }
   if (!title) { $('#titleInput').focus(); return showToast('Please enter a title'); }
   
-  const dateVal = $('#dateInput').value || iso(new Date());
-  const timeVal = $('#timeInput').value || '';
-  const date = timeVal ? `${dateVal}T${timeVal}:00` : dateVal;
-
+  const date = $('#dateInput').value || iso(new Date());
   const note = $('#noteInput').value.trim(), location = $('#locationInput').value.trim();
   
   if (editingId) { 
@@ -1487,10 +1466,9 @@ $('#importJson').addEventListener('change', (e) => {
   reader.readAsText(file);
 });
 $('#exportCsv').addEventListener('click', () => {
-  const rows = [['Date', 'Time', 'Type', 'Title', 'Category', 'Payment Method', 'Note', 'Amount', 'Location', 'Currency']];
+  const rows = [['Date', 'Type', 'Title', 'Category', 'Payment Method', 'Note', 'Amount', 'Location', 'Currency']];
   sortedTx().forEach(t => { 
-    const dVal = String(t.date);
-    rows.push([ getCleanDateStr(t.date), dVal.split('T')[1] || '', t.type, t.title, findCat(t.type, t.category).name, t.paymentMethod, t.note || '', Number(t.amount).toFixed(2), t.location || '', state.currency ]); 
+    rows.push([ getCleanDateStr(t.date), t.type, t.title, findCat(t.type, t.category).name, t.paymentMethod, t.note || '', Number(t.amount).toFixed(2), t.location || '', state.currency ]); 
   });
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\r\n');
   download('\uFEFF' + csv, `det-export-${iso(new Date())}.csv`, 'text/csv;charset=utf-8');
@@ -1498,7 +1476,6 @@ $('#exportCsv').addEventListener('click', () => {
 $('#exportXlsx').addEventListener('click', () => {
   const rows = sortedTx().map(t => ({ 
     Date: getCleanDateStr(t.date), 
-    Time: String(t.date).split('T')[1] || '',
     Type: t.type, Title: t.title, Category: findCat(t.type, t.category).name, 'Payment Method': t.paymentMethod, Note: t.note || '', Amount: Number(t.amount), Location: t.location || '', Currency: state.currency 
   }));
   const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Transactions"); XLSX.writeFile(wb, `det-export-${iso(new Date())}.xlsx`);
